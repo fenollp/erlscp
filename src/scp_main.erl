@@ -42,6 +42,7 @@ drive(Env0, {'block',Line,[A0,B0]}, R) ->
     {Env, B} = drive(Env1, B0, R),
     {Env, scp_term:make_block(Line, A, B)};
 drive(Env0, {'block',Line,Es}, R) ->
+    %% XXX: this shouldn't be in the input language anymore
     drive(Env0, scp_term:list_to_block(Line, Es), R);
 
 %% Focusing rules.
@@ -79,13 +80,20 @@ drive_clauses(Env, Cs) ->
 drive_clause(Env0, {clause,L,Head,Guard,Body0}, _) ->
     Vars = lists:flatmap(fun scp_pattern:pattern_variables/1, Head),
     Env1 = Env0#env{in_set=Env0#env.in_set ++ Vars},
+    %% XXX: list_to_block shouldn't be needed
     {Env,Body} = drive(Env1, scp_term:list_to_block(L, Body0), []),
     {Env,{clause,L,Head,Guard,[Body]}}.
 
 %% Driving of function calls.
 drive_call(Env0, Funterm, Line, Name, Arity, Clauses, R) ->
-    io:fwrite("Call: ~p, ~w/~w, R: ~p~n", [Funterm, Name,Arity,R]),
-    {Env0, plug(Funterm, R)}.
+    io:fwrite("Call: ~p, ~w/~w, R: ~p~n", [Funterm,Name,Arity,R]),
+    L = plug(Funterm, R),
+    FV = scp_term:free_variables(Env0#env.in_set, L),
+    io:fwrite("Free variables in ~p: ~w~n", [L,FV]),
+    %% XXX: keep only those FV also in Env0#env.in_set
+    %% Body = scp_pattern:
+    %% if a body could not be found, return {Env0,L}.
+    {Env0,L}.
 
 %% Plug an expression into a context.
 plug(Expr, []) ->

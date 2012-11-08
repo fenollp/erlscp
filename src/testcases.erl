@@ -1,4 +1,5 @@
 -module(testcases).
+-export([cases/1]).
 -include("scp.hrl").
 -compile({parse_transform, erlang_supercompiler}).
 
@@ -41,3 +42,10 @@
 %%foo(0) -> 0;
 foo(X) ->
     foo(X+1).
+
+cases(X) ->
+    case X of
+        [A|B] -> ok;
+        _ -> B = X
+    end,
+    B.
