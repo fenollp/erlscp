@@ -1,51 +1,20 @@
+%% -*- coding: utf-8; mode: erlang -*-
+%% @copyright 2012 Göran Weinholt
+%% @author Göran Weinholt <goran@weinholt.se>
+%% @doc The driving algorithm in the supercompiler.
 
 -module(scp_main).
 -export([drive/3]).
 
 -include("scp.hrl").
 
-%% Convert a list of expressions (such as a body) into nested blocks.
-list_to_block(Line,[X]) ->
-    X;
-list_to_block(Line,[X|Xs]) ->
-    make_block(Line, X, list_to_block(Line, Xs)).
-    %% {'block',Line,[X,list_to_block(Line,Xs)]}.
-
-%% From Oscar Waddell's dissertation. The return expression for whole
-%% the block becomes the second expression of the block.
-make_block(L0, E1, E2) ->
-    case is_simple(E1) of
-	true -> E2;
-	false ->
-	    E1n = case E1 of
-		      {'block',_,[E1a,E1b]} ->
-			  case is_simple(E1b) of
-			      true -> E1a;
-			      _ -> E1
-			  end;
-		      _ -> E1
-		  end,
-	    case E2 of
-		{'block',L1,[E3,E4]} ->
-		    {'block',L1,{'block',L0,[E1n,E3]},E4};
-		_ ->
-		    {'block',L0,[E1n,E2]}
-	    end
+lookup_function(Env, K={Name,Arity}) ->
+    case dict:find(K, Env#env.global) of
+	{ok,Body} ->
+	    {ok,Body};
+	_ ->
+	    dict:find(K, Env#env.global)
     end.
-
-is_simple({var,_,_}) -> true;
-is_simple({integer,_,_}) -> true;
-is_simple({float,_,_}) -> true;
-is_simple({atom,_,_}) -> true;
-is_simple({string,_,_}) -> true;
-is_simple({char,_,_}) -> true;
-is_simple({nil,_,_}) -> true;
-is_simple({'fun',_,_}) -> true;
-is_simple(_) -> false.
-
-lookup_function(Env, Name) ->
-    false.
-
 
 %% The driving algorithm. The environment is used to pass information
 %% downwards and upwards the stack. R is the current context.
@@ -54,11 +23,13 @@ lookup_function(Env, Name) ->
 %% drive(Env0, {'integer',L0,C}, [Ctxt=#case_ctxt{}|R]) ->  %R1
 %%     ;
 
-drive(Env0, E={'var',L0,G}, R) ->		%R3
-    case lookup_function(Env0, G) of
-	{value,Cs} -> drive_call(Env0, E, Cs, R);
+drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
+    Arity = length(Args),
+    case lookup_function(Env0, {G, Arity}) of
+	{ok,Cs} -> drive_call(Env0, E, L0, G, Arity, Cs, R);
 	_ -> build(Env0, E, R)
     end;
+%% TODO: R3 for 'fun' references in any context
 
 drive(Env0, {'fun',Line,{clauses,Cs0}}, R) ->	%R6
     {Env,Cs} = drive_clauses(Env0, Cs0),
@@ -69,9 +40,9 @@ drive(Env0, {'fun',Line,{clauses,Cs0}}, R) ->	%R6
 drive(Env0, {'block',Line,[A0,B0]}, R) ->
     {Env1, A} = drive(Env0, A0, []),
     {Env, B} = drive(Env1, B0, R),
-    {Env, make_block(Line, A, B)};
+    {Env, scp_term:make_block(Line, A, B)};
 drive(Env0, {'block',Line,Es}, R) ->
-    drive(Env0, list_to_block(Line, Es), R);
+    drive(Env0, scp_term:list_to_block(Line, Es), R);
 
 %% Focusing rules.
 drive(Env0, {'call',L,F,Args}, R) ->		%R12
@@ -81,7 +52,10 @@ drive(Env0, {'call',L,F,Args}, R) ->		%R12
 drive(Env0, Expr, R) ->				%R14
     io:fwrite("~n%% Fallthrough!~n", []),
     io:fwrite("%% Env: ~p~n%% Expr: ~p~n%% R: ~p~n",
-	      [Env0#env{forms=x}, Expr, R]),
+	      [Env0#env{forms=x,
+			global=dict:fetch_keys(Env0#env.global),
+			local=dict:fetch_keys(Env0#env.local)},
+	       Expr, R]),
     build(Env0, Expr, R).
 
 %% Rebuilding expressions.
@@ -105,12 +79,13 @@ drive_clauses(Env, Cs) ->
 drive_clause(Env0, {clause,L,Head,Guard,Body0}, _) ->
     Vars = lists:flatmap(fun scp_pattern:pattern_variables/1, Head),
     Env1 = Env0#env{in_set=Env0#env.in_set ++ Vars},
-    {Env,Body} = drive(Env1, list_to_block(L, Body0), []),
+    {Env,Body} = drive(Env1, scp_term:list_to_block(L, Body0), []),
     {Env,{clause,L,Head,Guard,[Body]}}.
 
 %% Driving of function calls.
-drive_call(Env0, Name, Clauses, R) ->
-    {Env0, plug(Name, R)}.
+drive_call(Env0, Funterm, Line, Name, Arity, Clauses, R) ->
+    io:fwrite("Call: ~p, ~w/~w, R: ~p~n", [Funterm, Name,Arity,R]),
+    {Env0, plug(Funterm, R)}.
 
 %% Plug an expression into a context.
 plug(Expr, []) ->
