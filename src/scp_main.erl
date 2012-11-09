@@ -57,10 +57,10 @@ drive(Env0, {'fun',Line,{clauses,Cs0}}, R) ->   %R6
 drive(Env0, {'block',Line,[A0,B0]}, R) ->
     {Env1, A} = drive(Env0, A0, []),
     {Env, B} = drive(Env1, B0, R),
-    {Env, scp_term:make_block(Line, A, B)};
+    {Env, scp_expr:make_block(Line, A, B)};
 drive(Env0, {'block',Line,Es}, R) ->
     %% XXX: this shouldn't be in the input language anymore
-    drive(Env0, scp_term:list_to_block(Line, Es), R);
+    drive(Env0, scp_expr:list_to_block(Line, Es), R);
 
 %% Focusing rules.
 drive(Env0, {'call',L,F,Args}, R) ->            %R12
@@ -98,7 +98,7 @@ drive_clause(Env0, {clause,L,Head,Guard,Body0}, _) ->
     Vars = lists:flatmap(fun scp_pattern:pattern_variables/1, Head),
     Env1 = Env0#env{bound=sets:union(Env0#env.bound, sets:from_list(Vars))},
     %% XXX: list_to_block shouldn't be needed after simplify
-    {Env,Body} = drive(Env1, scp_term:list_to_block(L, Body0), []),
+    {Env,Body} = drive(Env1, scp_expr:list_to_block(L, Body0), []),
     {Env,{clause,L,Head,Guard,[Body]}}.
 
 %% Driving of function calls.
@@ -107,14 +107,14 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
     io:fwrite("Call: ~p, ~w/~w, R: ~p~n", [Funterm,Name,Arity,R]),
     io:fwrite("Fun: ~p~n", [Fun0]),
     L = plug(Funterm, R),
-    FV = scp_term:free_variables(Env0#env.bound, L),
+    FV = scp_expr:free_variables(Env0#env.bound, L),
     %% TODO: first try to find a renaming
     %% TODO: second try to find a homeomorphic embedding
 
     begin
         %% Neither a renaming nor an embedding.
-        {Env1,Fname} = scp_term:gensym(Env0,"h"),
-        {Env2,Fun} = scp_term:alpha_convert(Env1, Fun0),
+        {Env1,Fname} = scp_expr:gensym(Env0,"h"),
+        {Env2,Fun} = scp_expr:alpha_convert(Env1, Fun0),
         %% Remember that Fname came from the expression L.
         Env3 = Env2#env{ls = [{Fname,L}|Env2#env.ls]},
         io:fwrite("Before: ~p~nAfter: ~p~n", [Fun0,Fun]),
@@ -122,7 +122,7 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
         %% call_ctxt then this might do inlining.
         {Env4,E} = drive(Env3, Fun, R),
         io:fwrite("After driving the fun: ~p~n", [E]),
-        {Env5,S} = scp_term:fresh_variables(Env4, dict:new(), FV),
+        {Env5,S} = scp_expr:fresh_variables(Env4, dict:new(), FV),
         %% The line numbers are probably going to be a bit wrong.
         case FV of
             [] ->
@@ -130,13 +130,13 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
                 NewFun0 = E,
                 NewTerm = {var,Line,Fname};
             _ ->
-                Head = [scp_term:subst(S, {var,Line,X}) || X <- FV],
+                Head = [scp_expr:subst(S, {var,Line,X}) || X <- FV],
                 %% io:fwrite("S: ~p~n", [S]),
                 %% io:fwrite("Free variables in ~p: ~w~n", [L,FV]),
                 %% io:fwrite("Head: ~p~n",[Head]),
                 Guard = [],
                 %% io:fwrite("E: ~p~n",[E]),
-                Body = scp_term:subst(S, E),
+                Body = scp_expr:subst(S, E),
                 NewFun0 = {'fun',Line,
                            {clauses,
                             {clause,Line,Head,Guard,Body}}},
@@ -145,7 +145,7 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
         end,
         io:fwrite("NewFun0: ~p~n",[NewFun0]),
         io:fwrite("NewTerm: ~p~n",[NewTerm]),
-        %% NewFun = scp_term:alpha_convert(NewFun0),
+        %% NewFun = scp_expr:alpha_convert(NewFun0),
         %% This letrec will become a top-level function later.
         %% {Env5,{'letrec',Line,[{Fname,NewFun}],NewTerm}}
 

@@ -3,9 +3,7 @@
 %% @author Göran Weinholt <goran@weinholt.se>
 %% @doc Miscellaneous tools for working with Erlang expressions.
 
-%% TODO: should be scp_expr
-
--module(scp_term).
+-module(scp_expr).
 -export([list_to_block/2, make_block/3,
          function_to_fun/1, fun_to_function/3,
          simplify/1,
