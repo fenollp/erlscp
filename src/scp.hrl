@@ -8,12 +8,12 @@
 	      ls = [],
 	      memo = [],
 	      split_vars = [],
-	      in_set = [],
+	      bound = sets:new(),
 	      %% Global and local functions. The keys are {Name,Arity}
 	      %% and the values are fun terms.
 	      global = dict:new(),
 	      local = dict:new(),
-	      fun_names = [],
+	      seen_vars = sets:new(),
 	      forms = []}).
 
 %% Contexts.

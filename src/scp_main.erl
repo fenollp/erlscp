@@ -10,10 +10,10 @@
 
 lookup_function(Env, K={Name,Arity}) ->
     case dict:find(K, Env#env.global) of
-	{ok,Body} ->
-	    {ok,Body};
-	_ ->
-	    dict:find(K, Env#env.global)
+        {ok,Fun} ->
+            {ok,Fun};
+        _ ->
+            dict:find(K, Env#env.global)
     end.
 
 %% The driving algorithm. The environment is used to pass information
@@ -24,14 +24,17 @@ lookup_function(Env, K={Name,Arity}) ->
 %%     ;
 
 drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
+    %% This is a function call to a local function or a BIF. The
+    %% function name is an atom, so the only way the arity can be
+    %% found is by looking at the context.
     Arity = length(Args),
     case lookup_function(Env0, {G, Arity}) of
-	{ok,Cs} -> drive_call(Env0, E, L0, G, Arity, Cs, R);
-	_ -> build(Env0, E, R)
+        {ok,Fun} -> drive_call(Env0, E, L0, G, Arity, Fun, R);
+        _ -> build(Env0, E, R)
     end;
 %% TODO: R3 for 'fun' references in any context
 
-drive(Env0, {'fun',Line,{clauses,Cs0}}, R) ->	%R6
+drive(Env0, {'fun',Line,{clauses,Cs0}}, R) ->   %R6
     {Env,Cs} = drive_clauses(Env0, Cs0),
     build(Env, {'fun',Line,{clauses,Cs}}, R);
 
@@ -46,24 +49,24 @@ drive(Env0, {'block',Line,Es}, R) ->
     drive(Env0, scp_term:list_to_block(Line, Es), R);
 
 %% Focusing rules.
-drive(Env0, {'call',L,F,Args}, R) ->		%R12
+drive(Env0, {'call',L,F,Args}, R) ->            %R12
     drive(Env0, F, [#call_ctxt{line=L, args=Args}|R]);
 
 %% Fallthrough.
-drive(Env0, Expr, R) ->				%R14
+drive(Env0, Expr, R) ->                         %R14
     io:fwrite("~n%% Fallthrough!~n", []),
     io:fwrite("%% Env: ~p~n%% Expr: ~p~n%% R: ~p~n",
-	      [Env0#env{forms=x,
-			global=dict:fetch_keys(Env0#env.global),
-			local=dict:fetch_keys(Env0#env.local)},
-	       Expr, R]),
+              [Env0#env{forms=x,
+                        global=dict:fetch_keys(Env0#env.global),
+                        local=dict:fetch_keys(Env0#env.local)},
+               Expr, R]),
     build(Env0, Expr, R).
 
 %% Rebuilding expressions.
 build(Env0, Expr, [#call_ctxt{line=Line, args=Args0}|R]) -> %R17
     {Env, Args} = drive_list(Env0, fun drive/3, Args0),
     build(Env, {call,Line,Expr,Args}, R);
-build(Env, Expr, []) ->				%R20
+build(Env, Expr, []) ->                         %R20
     {Env, Expr}.
 
 
@@ -79,21 +82,28 @@ drive_clauses(Env, Cs) ->
     drive_list(Env, fun drive_clause/3, Cs).
 drive_clause(Env0, {clause,L,Head,Guard,Body0}, _) ->
     Vars = lists:flatmap(fun scp_pattern:pattern_variables/1, Head),
-    Env1 = Env0#env{in_set=Env0#env.in_set ++ Vars},
-    %% XXX: list_to_block shouldn't be needed
+    Env1 = Env0#env{bound=sets:union(Env0#env.bound, sets:from_list(Vars))},
+    %% XXX: list_to_block shouldn't be needed after simplify
     {Env,Body} = drive(Env1, scp_term:list_to_block(L, Body0), []),
     {Env,{clause,L,Head,Guard,[Body]}}.
 
 %% Driving of function calls.
-drive_call(Env0, Funterm, Line, Name, Arity, Clauses, R) ->
+drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
+    %% It is safe to return {Env0,L} if things become difficult.
     io:fwrite("Call: ~p, ~w/~w, R: ~p~n", [Funterm,Name,Arity,R]),
+    io:fwrite("Fun: ~p~n", [Fun0]),
     L = plug(Funterm, R),
-    FV = scp_term:free_variables(Env0#env.in_set, L),
+    FV = scp_term:free_variables(Env0#env.bound, L),
     io:fwrite("Free variables in ~p: ~w~n", [L,FV]),
-    %% XXX: keep only those FV also in Env0#env.in_set
-    %% Body = scp_pattern:
-    %% if a body could not be found, return {Env0,L}.
-    {Env0,L}.
+    %% TODO: first try to find a renaming
+    %% TODO: second try to find a homeomorphic embedding
+
+    begin
+        {Env1,Fname} = scp_term:gensym(Env0,"h"),
+        %%{Env2,Fun} = scp_term:alpha_convert(Env1, Fun0),
+        {Env1,{integer,Line,3}}
+    end.
+
 
 %% Plug an expression into a context.
 plug(Expr, []) ->

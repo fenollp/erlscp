@@ -9,6 +9,7 @@
 -include("scp.hrl").
 
 %% List the variables used in a pattern.
+%% TODO: see if erl_syntax_lib:variables(Expr) works just as well
 pattern_variables(Expr) ->
     Vars = pv(Expr),
     gb_sets:to_list(gb_sets:from_list(Vars)).

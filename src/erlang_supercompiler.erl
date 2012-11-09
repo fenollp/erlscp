@@ -19,7 +19,8 @@ forms(Forms, Env) ->
 form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
     io:fwrite("~n~nLooking at function: ~w~n", [Name]),
     Expr0 = scp_term:simplify(scp_term:function_to_fun(F)),
-    {Env,Expr} = scp_main:drive(Env0, Expr0, []),
+    Env1 = Env0#env{seen_vars = erl_syntax_lib:variables(Expr0)},
+    {Env,Expr} = scp_main:drive(Env1, Expr0, []),
     [scp_term:fun_to_function(Expr, Name, Arity)];
 form(X, _Env) ->
     [X].

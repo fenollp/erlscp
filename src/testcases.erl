@@ -1,5 +1,5 @@
 -module(testcases).
--export([cases/1]).
+-export([]).
 -include("scp.hrl").
 -compile({parse_transform, erlang_supercompiler}).
 
@@ -43,9 +43,15 @@
 foo(X) ->
     foo(X+1).
 
-cases(X) ->
-    case X of
-        [A|B] -> ok;
-        _ -> B = X
-    end,
-    B.
+%% foo2(X,X)->X.
+%% foo2() ->
+%%     (X=1)+(X=1).
+
+%% cases(X) ->
+%%     case X of
+%%         [A|B] -> ok;
+%%         _ -> B = X
+%%     end,
+%%     B.
+
+%% lists:append(X=[1,2],X=[3,4]),
