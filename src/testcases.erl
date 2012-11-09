@@ -39,9 +39,24 @@
 %% 	    X
 %%     end.
 
-%%foo(0) -> 0;
-foo(X) ->
-    foo(X+1).
+%% apt({Xs,Ys}) ->
+%%     case {Xs,Ys} of
+%%         {[]} -> Ys;
+%%         {[X|Xs]} -> [X|apt({Xs,Ys})]
+%%     end.
+
+
+ap([],Ys) -> Ys;
+ap([X|Xs],Ys) -> [X|ap(Xs,Ys)].
+
+%% ap(Xs,Ys) ->
+%%     case Xs of
+%%         [] -> Ys;
+%%         [X|Xs] -> [X|ap(Xs,Ys)]
+%%     end.
+
+foo(Xs,Ys,Zs) ->
+    ap(Xs,ap(Ys,Zs)).
 
 %% foo2(X,X)->X.
 %% foo2() ->

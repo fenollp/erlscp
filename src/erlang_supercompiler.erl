@@ -5,8 +5,11 @@
 parse_transform(Forms, Options) ->
     io:fwrite("Before: ~p~n", [Forms]),
     Global = extract_functions(Forms),
+    Fnames = lists:map(fun ({Name,_Arity}) -> Name end,
+                       dict:fetch_keys(Global)),
     Env0 = #env{forms = Forms,
-		global = Global},
+		global = Global,
+                seen_vars = sets:from_list(Fnames) },
     Ret = forms(Forms, Env0),
     io:fwrite("After: ~p~n", [Ret]),
     Ret.
@@ -19,7 +22,9 @@ forms(Forms, Env) ->
 form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
     io:fwrite("~n~nLooking at function: ~w~n", [Name]),
     Expr0 = scp_term:simplify(scp_term:function_to_fun(F)),
-    Env1 = Env0#env{seen_vars = erl_syntax_lib:variables(Expr0)},
+    Seen = sets:union(Env0#env.seen_vars,
+                      erl_syntax_lib:variables(Expr0)),
+    Env1 = Env0#env{seen_vars = Seen},
     {Env,Expr} = scp_main:drive(Env1, Expr0, []),
     [scp_term:fun_to_function(Expr, Name, Arity)];
 form(X, _Env) ->

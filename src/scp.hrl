@@ -13,6 +13,9 @@
 	      %% and the values are fun terms.
 	      global = dict:new(),
 	      local = dict:new(),
+              %% seen_vars keeps track of all the variable names which
+              %% have been seen anywhere. It's used when generating
+              %% fresh names (gensym).
 	      seen_vars = sets:new(),
 	      forms = []}).
 

@@ -34,6 +34,20 @@ drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
     end;
 %% TODO: R3 for 'fun' references in any context
 
+drive(Env0, {'fun',Lf,{clauses,Cs0}}, [#call_ctxt{line=Lc,args=As}|R]) -> %R5
+    %% This is how inlining happens. The original rule uses a let, but
+    %% the equivalent rule for Erlang must use a case. The fun should
+    %% have been alpha converted already, so it doesn't matter that
+    %% bindings can escape from the case.
+    %%    (fun (X,Y) -> X) (1,2).
+    %% => case {1,2} of {X,Y} -> X end.
+    E = {tuple,Lc,As},
+    Cs = lists:map(fun ({clause,Line,H0,G0,B0}) ->
+                           {clause,Line,[{tuple,Line,H0}],G0,B0}
+                   end,
+                   Cs0),
+    drive(Env0, {'case',Lf,E,Cs}, R);
+
 drive(Env0, {'fun',Line,{clauses,Cs0}}, R) ->   %R6
     {Env,Cs} = drive_clauses(Env0, Cs0),
     build(Env, {'fun',Line,{clauses,Cs}}, R);
@@ -94,14 +108,48 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
     io:fwrite("Fun: ~p~n", [Fun0]),
     L = plug(Funterm, R),
     FV = scp_term:free_variables(Env0#env.bound, L),
-    io:fwrite("Free variables in ~p: ~w~n", [L,FV]),
     %% TODO: first try to find a renaming
     %% TODO: second try to find a homeomorphic embedding
 
     begin
+        %% Neither a renaming nor an embedding.
         {Env1,Fname} = scp_term:gensym(Env0,"h"),
-        %%{Env2,Fun} = scp_term:alpha_convert(Env1, Fun0),
-        {Env1,{integer,Line,3}}
+        {Env2,Fun} = scp_term:alpha_convert(Env1, Fun0),
+        %% Remember that Fname came from the expression L.
+        Env3 = Env2#env{ls = [{Fname,L}|Env2#env.ls]},
+        io:fwrite("Before: ~p~nAfter: ~p~n", [Fun0,Fun]),
+        %% Drive the fun in the original context. If the context is a
+        %% call_ctxt then this might do inlining.
+        {Env4,E} = drive(Env3, Fun, R),
+        io:fwrite("After driving the fun: ~p~n", [E]),
+        {Env5,S} = scp_term:fresh_variables(Env4, dict:new(), FV),
+        %% The line numbers are probably going to be a bit wrong.
+        case FV of
+            [] ->
+                %% XXX: test this case
+                NewFun0 = E,
+                NewTerm = {var,Line,Fname};
+            _ ->
+                Head = [scp_term:subst(S, {var,Line,X}) || X <- FV],
+                %% io:fwrite("S: ~p~n", [S]),
+                %% io:fwrite("Free variables in ~p: ~w~n", [L,FV]),
+                %% io:fwrite("Head: ~p~n",[Head]),
+                Guard = [],
+                %% io:fwrite("E: ~p~n",[E]),
+                Body = scp_term:subst(S, E),
+                NewFun0 = {'fun',Line,
+                           {clauses,
+                            {clause,Line,Head,Guard,Body}}},
+                NewTerm = {'call',Line,{var,Line,Fname},
+                           [{var,Line,X} || X <- FV]}
+        end,
+        io:fwrite("NewFun0: ~p~n",[NewFun0]),
+        io:fwrite("NewTerm: ~p~n",[NewTerm]),
+        %% NewFun = scp_term:alpha_convert(NewFun0),
+        %% This letrec will become a top-level function later.
+        %% {Env5,{'letrec',Line,[{Fname,NewFun}],NewTerm}}
+
+        {Env0,L}
     end.
 
 

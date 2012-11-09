@@ -18,7 +18,7 @@ pv({char,_,_}) -> [];
 pv({float,_,_}) -> [];
 pv({atom,_,_}) -> [];
 pv({string,_,_}) -> [];
-pv({nil,_,_}) -> [];
+pv({nil,_}) -> [];
 pv({var,_,'_'}) -> [];
 pv({var,_,V}) -> [V];
 pv({op,_,A}) -> pv(A);
