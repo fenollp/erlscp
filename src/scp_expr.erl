@@ -196,10 +196,10 @@ ac(Env0,S0,{'fun',L,{function,M0,F0,A0}}) ->
     {Env,S,[M,F,A]} = ac_list(Env0,S0,[M0,F0,A0]),
     {Env,S,{'fun',L,{function,M,F,A}}};
 
-%% ac(Env0,S0,{'case',L,E0,Cs0}) ->
-%%     {Env1,S1,E} = ac(Env0, S0, E0),
-%%     {Env,S,Cs} = ac_icr_clauses(Env0, S0, Cs0, 'case'),
-%%     {Env,S,{'case',L,E,Cs}};
+ac(Env0,S0,{'case',L,E0,Cs0}) ->
+    {Env1,S1,E} = ac(Env0, S0, E0),
+    {Env,S,Cs} = ac_icr_clauses(Env0, S0, Cs0, 'case'),
+    {Env,S,{'case',L,E,Cs}};
 
 ac(Env0,S0,{match,L,P0,E0}) ->
     %% An unbound variable defined in P0 may already have been seen in
@@ -274,8 +274,37 @@ ac_guard(Env0,S0,[]) ->
     %% TODO:
     {Env0,S0,[]}.
 
-%% ac_icr_clauses(Env0, S0, [C0|Cs0], ExprType) ->
-%%     .
+ac_icr_clauses(Env0,S0,[{clause,L,[P0],G0,B0}|Cs0],ExprType) ->
+    Vars0 = sets:from_list(scp_pattern:pattern_variables(P0)),
+    Vars1 = sets:subtract(Vars0, Env0#env.bound),
+    Vars2 = sets:filter(fun (Name) -> not dict:is_key(Name,S0) end,
+                        Vars1),
+    {Env1,S1} = fresh_variables(Env0, S0, sets:to_list(Vars2)),
+    P = subst(S1, P0),
+    %% The new variables are bound in the guard and in the body.
+    {Env3,S3,G} = ac_guard(Env1#env{bound=sets:union(Env1#env.bound, Vars1)},
+                           S1, G0),
+    %% Variables can become bound in the body.
+    {Env4,S4,B} = ac_list(Env3, S3, B0),
+    case Cs0 of
+        [] ->
+            %% To make sets:union work properly down below.
+            {Env5,S5,Cs} = {Env4,S4,Cs0};
+        _ ->
+            {Env5,S5,Cs} = ac_icr_clauses(Env4#env{bound = Env0#env.bound},
+                                          S4, Cs0, ExprType)
+    end,
+    case ExprType of
+        'try' ->
+            %% No new variables escape.
+            Env = Env5#env{bound = Env0#env.bound};
+        _ ->
+            %% Variables that escape are those bound in all clauses.
+            Env = Env5#env{bound = sets:union(Env4#env.bound, Env5#env.bound)}
+    end,
+    {Env,S5,[{clause,L,[P],G,B}|Cs]};
+ac_icr_clauses(Env0,S0,[],ExprType) ->
+    {Env0,S0,[]}.
 
 
 
@@ -307,9 +336,7 @@ check_ac(E0) ->
     io:fwrite("Env: ~p~n",[Env]),
     %% TODO: check that E1 is a renaming
     true = E1 =/= E0,
-    Vars1 = erl_syntax_lib:variables(E1),
-    N0 = sets:size(Vars0),
-    N0 = sets:size(Vars1).
+    Vars1 = erl_syntax_lib:variables(E1).
 
 ac0_test() ->
     E0 = {'fun',43,
@@ -376,18 +403,31 @@ ac5_test() ->
     check_ac(E0).
 
 ac6_test() ->
-    E0 = {'case',46,
-             {var,46,'Xs'},
-             [{clause,47,[{nil,47}],[],[{var,47,'Ys'}]},
-              {clause,48,
-                  [{cons,48,{var,48,'X'},{var,48,'Xs'}}],
-                  [],
-                  [{cons,48,
-                       {var,48,'X'},
-                       {call,48,
-                           {atom,48,ap},
-                        [{var,48,'Xs'},{var,48,'Ys'}]}}]}]},
+    E0 = {'case',46,{var,46,'Xs'},
+          [{clause,47,[{nil,47}],[],[{var,47,'Ys'}]},
+           {clause,48,
+            [{cons,48,{var,48,'X'},{var,48,'Xs'}}],
+            [],
+            [{cons,48,
+              {var,48,'X'},
+              {call,48,{atom,48,ap},[{var,48,'Xs'},{var,48,'Ys'}]}}]}]},
     check_ac(E0).
+
+ac7_test() ->
+    E0 = {'block',66,
+          [{'case',66,
+            {var,66,'X'},
+            [{clause,67,
+              [{cons,67,{var,67,'A'},{var,67,'B'}}],
+              [],
+              [{atom,67,ok}]},
+             {clause,68,
+              [{var,68,'_'}],
+              [],
+              [{match,68,{var,68,'B'},{var,68,'X'}}]}]},
+           {var,69,'B'}]},
+    check_ac(E0).
+
 
 vars_test() ->
     E0 = {op,48,'+',

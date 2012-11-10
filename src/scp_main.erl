@@ -41,6 +41,9 @@ drive(Env0, {'fun',Lf,{clauses,Cs0}}, [#call_ctxt{line=Lc,args=As}|R]) -> %R5
     %% bindings can escape from the case.
     %%    (fun (X,Y) -> X) (1,2).
     %% => case {1,2} of {X,Y} -> X end.
+    %% FIXME: check that the arity matches
+    %% XXX: it might be better to treat this as a let, i.e. bite
+    %% off one argument at a time...
     E = {tuple,Lc,As},
     Cs = lists:map(fun ({clause,Line,H0,G0,B0}) ->
                            {clause,Line,[{tuple,Line,H0}],G0,B0}
@@ -139,13 +142,14 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
                 Body = scp_expr:subst(S, E),
                 NewFun0 = {'fun',Line,
                            {clauses,
-                            {clause,Line,Head,Guard,Body}}},
+                            [{clause,Line,Head,Guard,[Body]}]}},
                 NewTerm = {'call',Line,{var,Line,Fname},
                            [{var,Line,X} || X <- FV]}
         end,
         io:fwrite("NewFun0: ~p~n",[NewFun0]),
         io:fwrite("NewTerm: ~p~n",[NewTerm]),
-        %% NewFun = scp_expr:alpha_convert(NewFun0),
+        {Env6,NewFun} = scp_expr:alpha_convert(Env5, NewFun0),
+        io:fwrite("NewFun: ~p~n",[NewFun]),
         %% This letrec will become a top-level function later.
         %% {Env5,{'letrec',Line,[{Fname,NewFun}],NewTerm}}
 
