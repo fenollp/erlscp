@@ -16,6 +16,15 @@ lookup_function(Env, K={Name,Arity}) ->
             dict:find(K, Env#env.global)
     end.
 
+
+is_const({integer,_,_}) -> true;
+is_const({float,_,_}) -> true;
+is_const({atom,_,_}) -> true;
+is_const({string,_,_}) -> true;
+is_const({char,_,_}) -> true;
+is_const({nil,_}) -> true;
+is_const(_) -> false.
+
 %% The driving algorithm. The environment is used to pass information
 %% downwards and upwards the stack. R is the current context.
 
@@ -24,9 +33,7 @@ lookup_function(Env, K={Name,Arity}) ->
 %%     ;
 
 drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
-    %% This is a function call to a local function or a BIF. The
-    %% function name is an atom, so the only way the arity can be
-    %% found is by looking at the context.
+    %% This is a function call to a local function or a BIF.
     Arity = length(Args),
     case lookup_function(Env0, {G, Arity}) of
         {ok,Fun} -> drive_call(Env0, E, L0, G, Arity, Fun, R);
@@ -131,7 +138,7 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
             [] ->
                 %% XXX: test this case
                 NewFun0 = E,
-                NewTerm = {'fun',Line,{function,{atom,line,Fname},length(FV)}};
+                NewTerm = {'fun',Line,{function,{atom,Line,Fname},length(FV)}};
             _ ->
                 Head = [scp_expr:subst(S, {var,Line,X}) || X <- FV],
                 %% io:fwrite("S: ~p~n", [S]),
@@ -151,7 +158,8 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
         {Env6,NewFun} = scp_expr:alpha_convert(Env5, NewFun0),
         io:fwrite("NewFun: ~p~n",[NewFun]),
         %% This letrec will become a top-level function later.
-        {Env5,{'letrec',Line,[{Fname,length(FV),NewFun}],[NewTerm]}}
+        Letrec = scp_expr:make_letrec(Line,[{Fname,length(FV),NewFun}],[NewTerm]),
+        {Env6,Letrec}
 
     end.
 

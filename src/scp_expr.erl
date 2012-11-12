@@ -10,7 +10,7 @@
          variables/1, free_variables/2, subst/2,
          fresh_variables/3, gensym/2,
          alpha_convert/2,
-         extract_letrecs/1]).
+         make_letrec/3, extract_letrecs/1]).
 -include("scp.hrl").
 
 %% Convert a list of expressions (such as in a function body) into
@@ -309,21 +309,37 @@ ac_icr_clauses(Env0,S0,[],ExprType) ->
 
 %% The supercompiler creates letrecs. These do not exist in Erlang,
 %% but since the names are unique they can be implemented by placing
-%% the funs at the top level instead.
+%% the funs at the top level instead. An added complication is that
+%% erl_syntax isn't really too happy about new expression types, so
+%% the letrecs are dressed up as function calls.
 
+make_letrec(Line, [{Name,Arity,Fun}], Body) ->
+    Fakefun = {'fun',1,{function,scp_expr,letrec,1}},
+    Bs0 = [{tuple,2,[{atom,3,Name},{integer,4,Arity},Fun]}],
+    Arg = {cons,5,{tuple,6,Bs0},
+           {tuple,7,Body}},
+    {'call',Line,Fakefun,[Arg]}.
 
 extract_letrecs(E) -> extract_letrecs(E,[]).
 extract_letrecs(E0,Ls) ->
     {E1,Ls0} = extrecs_1(E0,Ls),
     E = erl_syntax:revert(E1),
     {E,Ls0}.
-extrecs_1({'letrec',Line,Bs,Body0},Ls0) ->
-    {Body,Ls1} = lists:mapfoldl(fun extract_letrecs/2, Ls0, Body0),
+extrecs_1({'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, Ls0) ->
+    {cons,_,{tuple,_,Bs0},{tuple,_,Body0}} = Arg,
+    Bs1 = [{Name,Arity,Fun} || {tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]} <- Bs0],
+    %% Extract letrecs from the funs
+    {Bs,Ls1} = lists:mapfoldl(fun ({Name,Arity,Fun0},Ls00) ->
+                                   {Fun,Ls01} = extract_letrecs(Fun0,Ls00),
+                                   {{Name,Arity,Fun},Ls01}
+                              end,
+                              Ls0, Bs1),
+    %% And now from the body
+    {Body,Ls2} = lists:mapfoldl(fun extract_letrecs/2, Ls1, Body0),
     E1 = list_to_block(Line,Body),
     {E1,Bs++Ls1};
 extrecs_1(E,Ls) ->
-    E1 = erl_syntax_lib:mapfold_subtrees(fun extrecs_1/2, Ls, E),
-    E1.
+    erl_syntax_lib:mapfold_subtrees(fun extrecs_1/2, Ls, E).
 
 %% EUnit tests.
 
@@ -489,28 +505,19 @@ subst1_test() ->
     E1 = subst(S0, E0).
 
 letrec_test() ->
+    Fname = h,
+    Arity = 3,
+    Fun = {'fun',59,
+           {clauses,
+            [{clause,59,
+              [{var,59,'Xs'},{var,59,'Ys'},{var,59,'Zs'}],
+              [],
+              [{var,50,'Xs'}]}]}},
     Call = {call,59,
             {var,59,h267},
             [{var,59,'Xs'},{var,59,'Ys'},{var,59,'Zs'}]},
-    E0 = {function,58,foo,3,
-          [{clause,58,
-            [{var,58,'Xs'},{var,58,'Ys'},{var,58,'Zs'}],
-            [],
-            [{letrec,59,
-              [{h267,3,
-                {'fun',59,
-                 {clauses,
-                  [{clause,59,
-                    [{var,59,'Xs'},{var,59,'Ys'},{var,59,'Zs'}],
-                    [],
-                    [{var,50,'Xs'}]}]}}}],
-              [Call]}]}]},
-    ECall = {function,58,foo,3,
-             [{clause,58,
-               [{var,58,'Xs'},{var,58,'Ys'},{var,58,'Zs'}],
-               [],
-               [Call]}]},
-    {E,Funs} = extract_letrecs(E0),
+    LR = make_letrec(0, [{Fname,Arity,Fun}], [Call]),
+    {E,Funs} = extract_letrecs(LR),
     io:fwrite("E: ~p~nFuns: ~p~n", [E,Funs]),
-    E = ECall,
-    [{h267,3,{'fun',59,_}}] = Funs.
+    E = Call,
+    [{Fname,Arity,Fun}] = Funs.
