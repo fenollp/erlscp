@@ -95,9 +95,8 @@ variables0(Expr) ->
 
 %% Generate a fresh variable.
 gensym(Env0, Prefix) ->
-    %% TODO: would be swell if gensym on a gensym did not just
-    %% evermore digits
-    F = fun (N) -> Prefix ++ integer_to_list(N) end,
+    F = fun (N) -> lists:takewhile(fun (C) -> C =/= $@ end, Prefix) ++
+                       "@" ++ integer_to_list(N) end,
     Name = erl_syntax_lib:new_variable_name(F, Env0#env.seen_vars),
     Env = Env0#env{seen_vars=sets:add_element(Name, Env0#env.seen_vars)},
     {Env,list_to_atom(Name)}.
