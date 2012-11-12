@@ -25,8 +25,12 @@ form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
     Seen = sets:union(Env0#env.seen_vars,
                       erl_syntax_lib:variables(Expr0)),
     Env1 = Env0#env{seen_vars = Seen},
-    {Env,Expr} = scp_main:drive(Env1, Expr0, []),
-    [scp_expr:fun_to_function(Expr, Name, Arity)];
+    {Env,Expr1} = scp_main:drive(Env1, Expr0, []),
+    {Expr,Letrecs} = scp_expr:extract_letrecs(Expr1),
+    Functions = [ scp_expr:fun_to_function(Expr, Name, Arity) ||
+                    {Name, Arity, Expr} <- Letrecs ],
+    Function = scp_expr:fun_to_function(Expr, Name, Arity),
+    [Function|Functions];
 form(X, _Env) ->
     [X].
 

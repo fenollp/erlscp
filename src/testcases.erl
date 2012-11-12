@@ -1,5 +1,5 @@
 -module(testcases).
--export([]).
+-export([foo/3]).
 -include("scp.hrl").
 -compile({parse_transform, erlang_supercompiler}).
 

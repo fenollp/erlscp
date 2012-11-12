@@ -42,8 +42,8 @@ drive(Env0, {'fun',Lf,{clauses,Cs0}}, [#call_ctxt{line=Lc,args=As}|R]) -> %R5
     %%    (fun (X,Y) -> X) (1,2).
     %% => case {1,2} of {X,Y} -> X end.
     %% FIXME: check that the arity matches
-    %% XXX: it might be better to treat this as a let, i.e. bite
-    %% off one argument at a time...
+    %% XXX: it might be better to treat this as a let, i.e. bite off
+    %% one argument at a time, unless there are repeated variables...
     E = {tuple,Lc,As},
     Cs = lists:map(fun ({clause,Line,H0,G0,B0}) ->
                            {clause,Line,[{tuple,Line,H0}],G0,B0}
@@ -131,7 +131,7 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
             [] ->
                 %% XXX: test this case
                 NewFun0 = E,
-                NewTerm = {var,Line,Fname};
+                NewTerm = {'fun',Line,{function,{atom,line,Fname},length(FV)}};
             _ ->
                 Head = [scp_expr:subst(S, {var,Line,X}) || X <- FV],
                 %% io:fwrite("S: ~p~n", [S]),
@@ -143,7 +143,7 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
                 NewFun0 = {'fun',Line,
                            {clauses,
                             [{clause,Line,Head,Guard,[Body]}]}},
-                NewTerm = {'call',Line,{var,Line,Fname},
+                NewTerm = {'call',Line,{atom,Line,Fname},
                            [{var,Line,X} || X <- FV]}
         end,
         io:fwrite("NewFun0: ~p~n",[NewFun0]),
@@ -151,9 +151,8 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
         {Env6,NewFun} = scp_expr:alpha_convert(Env5, NewFun0),
         io:fwrite("NewFun: ~p~n",[NewFun]),
         %% This letrec will become a top-level function later.
-        %% {Env5,{'letrec',Line,[{Fname,NewFun}],NewTerm}}
+        {Env5,{'letrec',Line,[{Fname,length(FV),NewFun}],[NewTerm]}}
 
-        {Env0,L}
     end.
 
 

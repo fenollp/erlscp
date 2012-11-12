@@ -9,7 +9,8 @@
          simplify/1,
          variables/1, free_variables/2, subst/2,
          fresh_variables/3, gensym/2,
-         alpha_convert/2]).
+         alpha_convert/2,
+         extract_letrecs/1]).
 -include("scp.hrl").
 
 %% Convert a list of expressions (such as in a function body) into
@@ -307,6 +308,23 @@ ac_icr_clauses(Env0,S0,[],ExprType) ->
     {Env0,S0,[]}.
 
 
+%% The supercompiler creates letrecs. These do not exist in Erlang,
+%% but since the names are unique they can be implemented by placing
+%% the funs at the top level instead.
+
+
+extract_letrecs(E) -> extract_letrecs(E,[]).
+extract_letrecs(E0,Ls) ->
+    {E1,Ls0} = extrecs_1(E0,Ls),
+    E = erl_syntax:revert(E1),
+    {E,Ls0}.
+extrecs_1({'letrec',Line,Bs,Body0},Ls0) ->
+    {Body,Ls1} = lists:mapfoldl(fun extract_letrecs/2, Ls0, Body0),
+    E1 = list_to_block(Line,Body),
+    {E1,Bs++Ls1};
+extrecs_1(E,Ls) ->
+    E1 = erl_syntax_lib:mapfold_subtrees(fun extrecs_1/2, Ls, E),
+    E1.
 
 %% EUnit tests.
 
@@ -470,3 +488,30 @@ subst1_test() ->
                  {tuple,44,[{var,44,'X'},{integer,44,1}]}},
                 {var,45,'X'}]}]}]}},
     E1 = subst(S0, E0).
+
+letrec_test() ->
+    Call = {call,59,
+            {var,59,h267},
+            [{var,59,'Xs'},{var,59,'Ys'},{var,59,'Zs'}]},
+    E0 = {function,58,foo,3,
+          [{clause,58,
+            [{var,58,'Xs'},{var,58,'Ys'},{var,58,'Zs'}],
+            [],
+            [{letrec,59,
+              [{h267,3,
+                {'fun',59,
+                 {clauses,
+                  [{clause,59,
+                    [{var,59,'Xs'},{var,59,'Ys'},{var,59,'Zs'}],
+                    [],
+                    [{var,50,'Xs'}]}]}}}],
+              [Call]}]}]},
+    ECall = {function,58,foo,3,
+             [{clause,58,
+               [{var,58,'Xs'},{var,58,'Ys'},{var,58,'Zs'}],
+               [],
+               [Call]}]},
+    {E,Funs} = extract_letrecs(E0),
+    io:fwrite("E: ~p~nFuns: ~p~n", [E,Funs]),
+    E = ECall,
+    [{h267,3,{'fun',59,_}}] = Funs.
