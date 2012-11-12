@@ -14,12 +14,12 @@ parse_transform(Forms, Options) ->
     io:fwrite("After: ~p~n", [Ret]),
     Ret.
 
-forms(Forms, Env) ->
-    %% TODO: pass around parts of env
-    lists:flatmap(fun (X) -> form(X, Env) end,
-		  Forms).
+forms(Forms0, Env) ->
+    {Forms, _Env0} = lists:mapfoldl(fun form/2, Env, Forms0),
+    lists:flatten(Forms).
 
 form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
+    %% TODO: what parts of the environment should be reset?
     io:fwrite("~n~nLooking at function: ~w~n", [Name]),
     Expr0 = scp_expr:simplify(scp_expr:function_to_fun(F)),
     Seen = sets:union(Env0#env.seen_vars,
@@ -30,9 +30,9 @@ form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
     Functions = [ scp_expr:fun_to_function(Expr, Name, Arity) ||
                     {Name, Arity, Expr} <- Letrecs ],
     Function = scp_expr:fun_to_function(Expr, Name, Arity),
-    [Function|Functions];
-form(X, _Env) ->
-    [X].
+    {[Function|Functions],Env};
+form(X, Env) ->
+    {[X],Env}.
 
 %% Go over the forms and extract the top-level functions.
 extract_functions(Forms) ->

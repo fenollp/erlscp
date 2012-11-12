@@ -1,5 +1,7 @@
 -module(testcases).
--export([foo/3]).
+-export([foo0/3
+        %% ,foo1/3
+        ]).
 -include("scp.hrl").
 -compile({parse_transform, erlang_supercompiler}).
 
@@ -55,8 +57,11 @@ ap([X|Xs],Ys) -> [X|ap(Xs,Ys)].
 %%         [X|Xs] -> [X|ap(Xs,Ys)]
 %%     end.
 
-foo(Xs,Ys,Zs) ->
+foo0(Xs,Ys,Zs) ->
     ap(Xs,ap(Ys,Zs)).
+
+%% foo1(Xs,Ys,Zs) ->
+%%     ap(ap(Xs,Ys),Zs).
 
 %% foo2(X,X)->X.
 %% foo2() ->
