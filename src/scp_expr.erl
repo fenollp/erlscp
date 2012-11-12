@@ -10,7 +10,8 @@
          variables/1, free_variables/2, subst/2,
          fresh_variables/3, gensym/2,
          alpha_convert/2,
-         make_letrec/3, extract_letrecs/1]).
+         make_letrec/3, extract_letrecs/1,
+         find_renaming/2]).
 -include("scp.hrl").
 
 %% Convert a list of expressions (such as in a function body) into
@@ -121,7 +122,7 @@ subst_1(S, E) ->
     erl_syntax_lib:map_subtrees(Fun, E).
 subst_fun(S) ->
     fun
-        (E={var,L,'_'}) ->
+        (E={var,_,'_'}) ->
             E;
         (E={var,L,V}) ->
             case dict:find(V, S) of
@@ -327,11 +328,14 @@ extract_letrecs(E0,Ls) ->
     {E,Ls0}.
 extrecs_1({'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, Ls0) ->
     {cons,_,{tuple,_,Bs0},{tuple,_,Body0}} = Arg,
-    Bs1 = [{Name,Arity,Fun} || {tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]} <- Bs0],
+    %Bs1 = [{Name,Arity,Fun} || {tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]} <- Bs0],
+    Bs1 = lists:map(fun ({tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]}) ->
+                            {Name,Arity,Fun}
+                    end, Bs0),
     %% Extract letrecs from the funs
     {Bs,Ls1} = lists:mapfoldl(fun ({Name,Arity,Fun0},Ls00) ->
-                                   {Fun,Ls01} = extract_letrecs(Fun0,Ls00),
-                                   {{Name,Arity,Fun},Ls01}
+                                      {Fun,Ls01} = extract_letrecs(Fun0,Ls00),
+                                      {{Name,Arity,Fun},Ls01}
                               end,
                               Ls0, Bs1),
     %% And now from the body
@@ -340,6 +344,74 @@ extrecs_1({'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, Ls0) ->
     {E1,Bs++Ls1};
 extrecs_1(E,Ls) ->
     erl_syntax_lib:mapfold_subtrees(fun extrecs_1/2, Ls, E).
+
+%% Renamings.
+
+find_renaming(Env, Expr) ->
+    io:fwrite("Is ~p a renaming of something in ~p?~n",[Expr,Env#env.ls]),
+    find_renaming_1(Env#env.ls, Expr).
+
+find_renaming_1([{Fname,E}|Es], Expr) ->
+    %% Find out if the old expression E is a renaming of Expr.
+    case is_renaming(E, Expr) of
+        true -> {ok,Fname};
+        false -> find_renaming_1(Es, Expr)
+    end;
+find_renaming_1([], Expr) ->
+    false.
+
+is_renaming(E1, E2) ->
+    case find_var_subst([{E1,E2}]) of
+        {ok,S} ->
+            io:fwrite("E1: ~p, E2: ~p~n", [E1,E2]),
+            io:fwrite("S: ~p~n",[S]),
+            io:fwrite("Afterwards: ~p~n", [subst(dict:from_list(S), E2)]),
+            subst(dict:from_list(S), E2) == E2;
+        _ ->
+            false
+    end.
+
+%% This takes a worklist with expressions on the form [{E1,E2}|Rest].
+%% It then finds a substitution that when applied to E1 would return
+%% E2 (and so on for the rest of the list). It will only create
+%% variable to variable substitions, everything else must be the same.
+find_var_subst([]) -> {ok,[]};
+find_var_subst([{{integer,_,V},{integer,_,V}}|T]) -> find_var_subst(T);
+find_var_subst([{{float,_,V},{float,_,V}}|T]) -> find_var_subst(T);
+find_var_subst([{{atom,_,V},{atom,_,V}}|T]) -> find_var_subst(T);
+find_var_subst([{{string,_,V},{string,_,V}}|T]) -> find_var_subst(T);
+find_var_subst([{{char,_,V},{char,_,V}}|T]) -> find_var_subst(T);
+find_var_subst([{{nil,_},{nil,_}}|T]) -> find_var_subst(T);
+find_var_subst([{{var,_,N},{var,_,N}}|T]) ->
+    %% The same variable in both expressions. No need for a
+    %% substitution.
+    find_var_subst(T);
+find_var_subst([{{var,_,_},{var,_,'_'}}|T]) -> false;
+find_var_subst([{{var,_,'_'},{var,_,_}}|T]) -> false;
+find_var_subst([{{var,_,N1},E2={var,_,N2}}|T]) ->
+    %% Make a substitution from N1 to E2.
+    Sd = dict:from_list([{N1,E2}]),
+    case find_var_subst([{subst(Sd, A),subst(Sd, B)} || {A,B} <- T]) of
+        {ok,Ss} -> {ok,[{N1,E2}|Ss]};
+        false -> false
+    end;
+find_var_subst([{{call,_,F1,As1},{call,_,F2,As2}}|T]) when length(As1) == length(As2) ->
+    find_var_subst([{F1,F2} | lists:zip(As1,As2)] ++ T);
+%% TODO: case, fun, cons, tuple, etc...
+find_var_subst([{E1,E2}|T]) ->
+    %% If two expressions have different types then there can't be a
+    %% renaming.
+    io:fwrite("r fallthrough: ~p ~p~n",[E1,E2]),
+    %% XXX: Fill in all supported expression types here.
+    case lists:member(erl_syntax:type(E1),
+                      [integer,float,atom,string,char,nil,
+                       variable,underscore,application]) of
+        false -> error(todo);
+        _ -> true
+    end,
+    false.
+
+%% TODO: Linearity and strictness.
 
 %% EUnit tests.
 
@@ -521,3 +593,11 @@ letrec_test() ->
     io:fwrite("E: ~p~nFuns: ~p~n", [E,Funs]),
     E = Call,
     [{Fname,Arity,Fun}] = Funs.
+
+renaming0_test() ->
+    true = is_renaming({call,1,{atom,1,append},[{var,1,'Xs'},{var,1,'Xs'}]},
+                       {call,1,{atom,1,append},[{var,1,'Xs'},{var,1,'Xs'}]}).
+
+renaming1_test() ->
+    true = is_renaming({call,1,{atom,1,append},[{var,1,'Xs'},{var,1,'Xs'}]},
+                       {call,1,{atom,1,append},[{var,1,'Ys'},{var,1,'Ys'}]}).
