@@ -1,4 +1,4 @@
-ERLC_FLAGS=-pa ebin -pa /tmp/erlang-15.b.1-dfsg/lib/eunit -DTEST
+ERLC_FLAGS=-pa ebin -DTEST
 SOURCES=$(wildcard src/*.erl)
 HEADERS=$(wildcard src/*.hrl)
 OBJECTS=$(SOURCES:src/%.erl=ebin/%.beam)
