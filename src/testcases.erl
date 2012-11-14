@@ -1,5 +1,5 @@
 -module(testcases).
--export([foo0/3
+-export([ap3/3
         %% ,foo1/3
         ]).
 -include("scp.hrl").
@@ -59,9 +59,6 @@ ap([X|Xs],Ys) -> [X|ap(Xs,Ys)].
 
 ap3(Xs,Ys,Zs) ->
     ap(ap(Xs,Ys),Zs).
-
-%% foo1(Xs,Ys,Zs) ->
-%%     ap(ap(Xs,Ys),Zs).
 
 %% foo2(X,X)->X.
 %% foo2() ->

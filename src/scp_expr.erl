@@ -348,6 +348,7 @@ extrecs_1(E,Ls) ->
 %% Renamings.
 
 find_renaming(Env, Expr) ->
+    %% TODO: check if it's necessary to know which names are bound
     io:fwrite("Is ~p a renaming of something in ~p?~n",[Expr,Env#env.ls]),
     find_renaming_1(Env#env.ls, Expr).
 

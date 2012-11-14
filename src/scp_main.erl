@@ -17,10 +17,10 @@ lookup_function(Env, K={Name,Arity}) ->
     end.
 
 head_variables(Head) ->
-    lists:flatmap(fun scp_pattern:pattern_variables/1, Head).
+    sets:from_list(lists:flatmap(fun scp_pattern:pattern_variables/1, Head)).
 
 extend_bound(Env,Vars) ->
-    Env#env{bound=sets:union(Env#env.bound, sets:from_list(Vars))}.
+    Env#env{bound=sets:union(Env#env.bound, Vars)}.
 
 is_const({integer,_,_}) -> true;
 is_const({float,_,_}) -> true;
@@ -48,9 +48,8 @@ drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
 
 drive(Env0, {'fun',Lf,{clauses,Cs0}}, [#call_ctxt{line=Lc,args=As}|R]) -> %R5
     %% This is how inlining happens. The original rule uses a let, but
-    %% the equivalent rule for Erlang must use a case. The fun should
-    %% have been alpha converted already, so it doesn't matter that
-    %% bindings can escape from the case.
+    %% the equivalent rule for Erlang must use an alpha-converted case
+    %% (at least if the patterns for the arguments aren't simple).
     %%    (fun (X,Y) -> X) (1,2).
     %% => case {1,2} of {X,Y} -> X end.
     %% FIXME: check that the arity matches
@@ -61,7 +60,8 @@ drive(Env0, {'fun',Lf,{clauses,Cs0}}, [#call_ctxt{line=Lc,args=As}|R]) -> %R5
                            {clause,Line,[{tuple,Line,H0}],G0,B0}
                    end,
                    Cs0),
-    drive(Env0, {'case',Lf,E,Cs}, R);
+    {Env,Case} = scp_expr:alpha_convert(Env0, {'case',Lf,E,Cs}),
+    drive(Env, Case, R);
 
 drive(Env0, {'fun',Line,{clauses,Cs0}}, R) ->   %R6
     {Env,Cs} = drive_clauses(Env0, Cs0),
@@ -107,28 +107,32 @@ build(Env0, Expr, [#call_ctxt{line=Line, args=Args0}|R]) -> %R17
     {Env,Args} = drive_list(Env0, fun drive/3, Args0),
     build(Env, {call,Line,Expr,Args}, R);
 build(Env0, Expr, [#case_ctxt{line=Line, clauses=Cs0}|R]) ->
+    %% This is where positive information can get propagated.
     case Expr of
         %% TODO: this part must be stronger
         %%{var,Lv,V} -> ;
         _ ->
-            %% Drive every clause body in the R context.
-            {Cs1,Env1} = lists:mapfoldr(
-                           fun ({clause,Lc,H0,G0,B0},Env00) ->
-                                   %% TODO: drive guards?
-                                   Vars = head_variables(H0),
-                                   Env01 = extend_bound(Env00, Vars),
-                                   B1 = scp_expr:list_to_block(Lc, B0),
-                                   {Env02,B} = drive(Env01, B1, R),
-                                   Env03 = Env02#env{bound=Env00#env.bound},
-                                   {{clause,Lc,H0,G0,[B]},Env03}
-                           end,
-                           Env0, Cs0),
-            {Env1, {'case',Line,Expr,Cs1}}
+            build_case_general(Env0, Expr, Line, Cs0, R)
     end;
 
 build(Env, Expr, []) ->                         %R20
     {Env, Expr}.
 
+build_case_general(Env0, Expr, Line, Cs0, R) ->
+    %% Drive every clause body in the R context.
+    {Cs1,Env1} = lists:mapfoldr(
+                   fun ({clause,Lc,H0,G0,B0},Env00) ->
+                           %% TODO: drive guards?
+                           Vars = head_variables(H0),
+                           Env01 = extend_bound(Env00, Vars),
+                           B1 = scp_expr:list_to_block(Lc, B0),
+                           {Env02,B} = drive(Env01, B1, R),
+                           Env03 = Env02#env{bound=Env00#env.bound},
+                           {{clause,Lc,H0,G0,[B]},Env03}
+                   end,
+                   Env0, Cs0),
+    %% TODO: find the new bindings going out of the case
+    {Env1, {'case',Line,Expr,Cs1}}.
 
 
 %% Driving of function clauses (always in the empty context).
