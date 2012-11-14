@@ -57,8 +57,8 @@ ap([X|Xs],Ys) -> [X|ap(Xs,Ys)].
 %%         [X|Xs] -> [X|ap(Xs,Ys)]
 %%     end.
 
-foo0(Xs,Ys,Zs) ->
-    ap(Xs,ap(Ys,Zs)).
+ap3(Xs,Ys,Zs) ->
+    ap(ap(Xs,Ys),Zs).
 
 %% foo1(Xs,Ys,Zs) ->
 %%     ap(ap(Xs,Ys),Zs).
