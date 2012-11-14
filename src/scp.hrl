@@ -17,10 +17,12 @@
               %% have been seen anywhere. It's used when generating
               %% fresh names (gensym).
               seen_vars = sets:new(),
+              %% The name of the function begin supercompiled.
+              name = "",
               forms = []}).
 
 %% Contexts.
--record(op_ctxt, {line, e1}).               %op(e0, e1)
+-record(op_ctxt, {line, op, e1}).           %op(e0, e1)
 -record(call_ctxt, {line, args}).           %call(<hole>, args...)
 -record(case_ctxt, {line, clauses}).        %case <hole> of clauses...
 -record(cons_ctxt, {line, tail}).           %[<hole>|tail]

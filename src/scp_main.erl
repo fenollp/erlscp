@@ -80,8 +80,8 @@ drive(Env0, {'block',Line,Es}, R) ->
 drive(Env0, {cons,L,H,T}, R) ->                 %R11 for cons
     drive(Env0, H, [#cons_ctxt{line=L, tail=T}|R]);
 
-%% drive(Env0, {op,L,Op,E0,E1}, R) ->
-%%     drive(Env0, E0, [#op_ctxt{line=L, e1=E1}|R]);
+drive(Env0, {op,L,Op,E0,E1}, R) ->
+    drive(Env0, E0, [#op_ctxt{line=L, op=Op, e1=E1}|R]);
 
 drive(Env0, {'call',L,F,Args}, R) ->            %R12
     drive(Env0, F, [#call_ctxt{line=L, args=Args}|R]);
@@ -106,6 +106,9 @@ build(Env0, Expr, [#cons_ctxt{line=Line, tail=T0}|R]) ->  %R15 for cons
     %% residual cons expression.
     {Env1,T1} = drive(Env0, T0, []),
     build(Env1, {cons,Line,Expr,T1}, R);
+build(Env0, Expr, [#op_ctxt{line=Line, op=Op, e1=E1}|R]) ->        %R15 for op
+    {Env1,E} = drive(Env0, E1, []),
+    build(Env1, {op,Line,Op,Expr,E}, R);
 build(Env0, Expr, [#call_ctxt{line=Line, args=Args0}|R]) -> %R17
     {Env,Args} = drive_list(Env0, fun drive/3, Args0),
     build(Env, {call,Line,Expr,Args}, R);
@@ -114,7 +117,7 @@ build(Env0, Expr, [#case_ctxt{line=Line, clauses=Cs0}|R]) ->
     case Expr of
         %% TODO: this part must be stronger
         %%{var,Lv,V} -> ;
-        _ ->
+        _ ->                                    %R19
             build_case_general(Env0, Expr, Line, Cs0, R)
     end;
 
@@ -182,7 +185,8 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
             {Env0,Expr};
         _ ->
             %% Neither a renaming nor an embedding.
-            {Env1,Fname} = scp_expr:gensym(Env0,"h"),
+            %%{Env1,Fname} = scp_expr:gensym(Env0,"h"),
+            {Env1,Fname} = scp_expr:gensym(Env0, Env0#env.name),
             {Env2,Fun} = scp_expr:alpha_convert(Env1, Fun0),
             %% Remember that Fname came from the expression L.
             Env3 = Env2#env{ls = [{Fname,L}|Env2#env.ls]},

@@ -24,7 +24,7 @@ form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
     Expr0 = scp_expr:simplify(scp_expr:function_to_fun(F)),
     Seen = sets:union(Env0#env.seen_vars,
                       erl_syntax_lib:variables(Expr0)),
-    Env1 = Env0#env{seen_vars = Seen},
+    Env1 = Env0#env{seen_vars=Seen, name=atom_to_list(Name)},
     {Env,Expr1} = scp_main:drive(Env1, Expr0, []),
     {Expr,Letrecs} = scp_expr:extract_letrecs(Expr1),
     Functions = [ scp_expr:fun_to_function(Expr, Name, Arity) ||
