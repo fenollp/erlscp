@@ -410,8 +410,7 @@ find_var_subst([{E1,E2}|T]) ->
     case lists:member(erl_syntax:type(E1),
                       [integer,float,atom,string,char,nil,
                        variable,underscore,application]) of
-        false -> error(todo);
-        _ -> true
+        true -> true
     end,
     false.
 
