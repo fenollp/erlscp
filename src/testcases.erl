@@ -1,7 +1,5 @@
 -module(testcases).
--export([ap3/3
-        %% ,foo1/3
-        ]).
+-export([ap3/3, sumsqs/1]).
 -include("scp.hrl").
 -compile({parse_transform, erlang_supercompiler}).
 
@@ -47,18 +45,12 @@
 %%         {[X|Xs]} -> [X|apt({Xs,Ys})]
 %%     end.
 
-
-ap([],Ys) -> Ys;
-ap([X|Xs],Ys) -> [X|ap(Xs,Ys)].
-
 %% ap(Xs,Ys) ->
 %%     case Xs of
 %%         [] -> Ys;
 %%         [X|Xs] -> [X|ap(Xs,Ys)]
 %%     end.
 
-ap3(Xs,Ys,Zs) ->
-    ap(ap(Xs,Ys),Zs).
 
 %% foo2(X,X)->X.
 %% foo2() ->
@@ -72,3 +64,21 @@ ap3(Xs,Ys,Zs) ->
 %%     B.
 
 %% lists:append(X=[1,2],X=[3,4]),
+
+
+ap([],Ys) -> Ys;
+ap([X|Xs],Ys) -> [X|ap(Xs,Ys)].
+
+ap3(Xs,Ys,Zs) ->
+    ap(ap(Xs,Ys),Zs).
+
+sum([]) -> 0;
+sum([X|Xs]) -> X + sum(Xs).
+
+square(X) -> X * X.
+
+map(Fun,[]) -> [];
+map(Fun,[X|Xs]) -> [Fun(X)|map(Fun,Xs)].
+
+sumsqs(Xs) ->
+    sum(map(fun square/1, Xs)).

@@ -5,6 +5,7 @@
 
 -module(scp_expr).
 -export([list_to_block/2, make_block/3,
+         make_case/3,
          function_to_fun/1, fun_to_function/3,
          simplify/1,
          variables/1, free_variables/2, subst/2,
@@ -52,6 +53,39 @@ is_simple({char,_,_}) -> true;
 is_simple({nil,_}) -> true;
 is_simple({'fun',_,_}) -> true;
 is_simple(_) -> false.
+
+%% Construction of case expressions.
+make_case(Line, E0={tuple,_,[A]}, Cs0) ->
+    %% Do not construct a tuple if it can be avoided.
+    AllOne = lists:all(fun ({clause,_,[P],G,B}) ->
+                               case P of
+                                   {tuple,_,[_]} -> true;
+                                   _ -> false
+                               end
+                       end, Cs0),
+    if AllOne == true ->
+            E = A,
+            Cs = lists:map(fun ({clause,Lc,[{tuple,_,[P0]}],G,B}) ->
+                                   {clause,Lc,[P0],G,B}
+                           end, Cs0);
+       true ->
+            E = E0,
+            Cs = Cs0
+    end,
+    make_case_1(Line, E, Cs);
+make_case(Line, E, Cs) ->
+    make_case_1(Line, E, Cs).
+
+make_case_1(Line, E, Cs0) ->
+    %% Cs = lists:filter(fun ({clause,_,[P],G,B}) ->
+    %%                           scp_pattern:is_match_possible(E, P, G)
+    %%                   end,
+    %%                   Cs0),
+    Cs=[],
+    case Cs of
+        [] -> {'case',Line,E,Cs0};
+        _ -> {'case',Line,E,Cs}
+    end.
 
 %% Conversion between global and local functions.
 function_to_fun({function,Line,_Name,_Arity,Clauses}) ->
@@ -401,18 +435,29 @@ find_var_subst([{{var,_,N1},E2={var,_,N2}}|T]) ->
     end;
 find_var_subst([{{call,_,F1,As1},{call,_,F2,As2}}|T]) when length(As1) == length(As2) ->
     find_var_subst([{F1,F2} | lists:zip(As1,As2)] ++ T);
+%% find_var_subst([{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T]) when length(Cs1) == length(Cs2) ->
+%%     find_var_subst([{E1,E2} | ... ] ++  T);
 %% TODO: case, fun, cons, tuple, etc...
 find_var_subst([{E1,E2}|T]) ->
     %% If two expressions have different types then there can't be a
     %% renaming.
-    io:fwrite("r fallthrough: ~p ~p~n",[E1,E2]),
-    %% XXX: Fill in all supported expression types here.
-    case lists:member(erl_syntax:type(E1),
-                      [integer,float,atom,string,char,nil,
-                       variable,underscore,application]) of
-        true -> true
-    end,
-    false.
+    io:fwrite("r fallthrough:~n ~p~n ~p~n",[E1,E2]),
+    T1 = erl_syntax:type(E1),
+    T2 = erl_syntax:type(E2),
+    case T1 == T2 of
+        true ->
+            %% XXX: Fill in all supported expression types here. This
+            %% is here because the function is not completed yet.
+            case lists:member(T1,
+                              [integer,float,atom,string,char,nil,
+                               variable,underscore,application,'case']) of
+                true -> true
+            end,
+            false;
+        _ ->
+            %% Different types. There can't possibly be a renaming.
+            false
+    end.
 
 %% TODO: Linearity and strictness.
 

@@ -60,7 +60,7 @@ drive(Env0, {'fun',Lf,{clauses,Cs0}}, [#call_ctxt{line=Lc,args=As}|R]) -> %R5
                            {clause,Line,[{tuple,Line,H0}],G0,B0}
                    end,
                    Cs0),
-    {Env,Case} = scp_expr:alpha_convert(Env0, {'case',Lf,E,Cs}),
+    {Env,Case} = scp_expr:alpha_convert(Env0, scp_expr:make_case(Lf,E,Cs)),
     drive(Env, Case, R);
 
 drive(Env0, {'fun',Line,{clauses,Cs0}}, R) ->   %R6
@@ -78,7 +78,10 @@ drive(Env0, {'block',Line,Es}, R) ->
 
 %% Focusing rules.
 drive(Env0, {cons,L,H,T}, R) ->                 %R11 for cons
-    drive(Env0, H, [#cons_ctxt{line=L, tail=T}]);
+    drive(Env0, H, [#cons_ctxt{line=L, tail=T}|R]);
+
+%% drive(Env0, {op,L,Op,E0,E1}, R) ->
+%%     drive(Env0, E0, [#op_ctxt{line=L, e1=E1}|R]);
 
 drive(Env0, {'call',L,F,Args}, R) ->            %R12
     drive(Env0, F, [#call_ctxt{line=L, args=Args}|R]);
@@ -132,7 +135,8 @@ build_case_general(Env0, Expr, Line, Cs0, R) ->
                    end,
                    Env0, Cs0),
     %% TODO: find the new bindings going out of the case
-    {Env1, {'case',Line,Expr,Cs1}}.
+    Case = scp_expr:make_case(Line, Expr, Cs1),
+    {Env1, Case}.
 
 
 %% Driving of function clauses (always in the empty context).
@@ -222,8 +226,11 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
 plug(Expr, []) ->
     Expr;
 plug(Expr, [#call_ctxt{line=Line, args=Args}|R]) ->
-    plug({call,Line,Expr,Args}, R).
-% TODO:
+    plug({call,Line,Expr,Args}, R);
+plug(Expr, [#case_ctxt{line=Line, clauses=Cs}|R]) ->
+    plug(scp_expr:make_case(Line,Expr,Cs), R);
+plug(Expr, [#cons_ctxt{line=Line, tail=T}|R]) ->
+    plug({cons,Line,Expr,T}, R).
 
 %% EUnit tests.
 
