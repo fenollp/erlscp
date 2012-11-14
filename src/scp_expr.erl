@@ -96,11 +96,14 @@ variables0(Expr) ->
 
 %% Generate a fresh variable.
 gensym(Env0, Prefix) ->
-    F = fun (N) -> lists:takewhile(fun (C) -> C =/= $@ end, Prefix) ++
-                       "@" ++ integer_to_list(N) end,
+    F = fun (N) ->
+                X = lists:takewhile(fun (C) -> C =/= $@ end, Prefix) ++
+                    "@" ++ integer_to_list(N),
+                list_to_atom(X)
+        end,
     Name = erl_syntax_lib:new_variable_name(F, Env0#env.seen_vars),
     Env = Env0#env{seen_vars=sets:add_element(Name, Env0#env.seen_vars)},
-    {Env,list_to_atom(Name)}.
+    {Env,Name}.
 
 fresh_variables(Env0,S0,Names) ->
     %% Updates the substitution dict S0 with fresh variables for Names.
