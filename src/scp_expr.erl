@@ -673,6 +673,16 @@ ac8_test() ->
     E0 = read("case X of [dit|Xs] -> 0; [dat|Xs] -> 1 end, Xs"),
     check_ac(E0).
 
+%% ac9_test() ->
+%%     %% TODO: because X is not used after the expression it would be
+%%     %% better if the two clauses were given different names for it,
+%%     %% but it might not really matter.
+%%     E0 = read("case 1 of X -> X; X -> X end"),
+%%     check_ac(E0),
+%%     E = alpha_convert(#env{}, E0),
+%%     {'case',_,_,[Clause1,Clause2]} = E,
+%%     true = Clause1 =/= Clause2.
+
 vars_test() ->
     E0 = {op,48,'+',
           {match,48,{var,48,'X'},{integer,48,1}},
