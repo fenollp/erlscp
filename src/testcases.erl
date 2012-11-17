@@ -107,9 +107,16 @@ string_test() ->
         "foo" -> 1
     end.
 
+char_test() ->
+    case $B of
+        $A -> 0;
+        $B -> 1;
+        $C -> 2
+    end.
+
 guard_test() ->
-    X = 1,
+    Xyzzy = 1,
     case foo of
         bar -> 0;
-        foo when X == 1 -> 1
+        foo when Xyzzy == 1 -> 1
     end.

@@ -46,32 +46,24 @@ is_simple_pattern(P) ->
     length(Vars) == gb_sets:size(Uniq) andalso
         scp_expr:matches(P) == [].
 
-%% %% Conservatively determine if a match is at all possible.
-%% is_match_possible({call,_,_}, _, _) -> true;
-%% is_match_possible({var,_,_}, _, _) -> true;
-%% is_match_possible({match,_,_}, _, _) -> true;
-%% is_match_possible(Expr, Pattern, Guard) ->
-%%     %% TODO: it might be useful to look deeper into the pattern, so
-%%     %% that this function returns false more often.
-%%     erl_syntax:type(Expr) == erl_syntax:type(Pattern).
-
 %% Go over the list of clauses left to right and return the clauses
-%% that could match the constant E. Only works with constant
-%% expressions (including the empty tuple) and patterns that are
-%% constants.
+%% that could match the constant E. Each clause is the tuple
+%% {Taken,Clause}, where Taken==yes if it's certain that the branch will
+%% be taken. Only works with constant expressions (including the empty
+%% tuple) and patterns that are constants.
 find_matching_const(E, Cs) ->
-    io:fwrite("find_matching_const(~p, ~p)~n",[E,Cs]),
+    io:fwrite("find_matching_const(~p, ~p)~n => ~p~n",[E,Cs,fmcc(E, Cs)]),
     fmcc(E, Cs).
 
-fmcc(E={T,_,V}, [C={clause,_,[{T,_,V}],_,_}|Cs]) -> fmcc_cons(E, C, Cs);
+fmcc(E={T,_,V}, [C={clause,_,[{T,_,V}],_,_}|Cs]) -> fmcc_cons(E, {yes,C}, Cs);
 fmcc(E={T,_,_}, [C={clause,_,[{T,_,_}],_,_}|Cs]) -> fmcc(E, Cs);
-fmcc(E={nil,_}, [C={clause,_,[{nil,_}],_,_}|Cs]) -> fmcc_cons(E, C, Cs);
-fmcc(E, [C|Cs]) -> [C|fmcc(E, Cs)];
+fmcc(E={nil,_}, [C={clause,_,[{nil,_}],_,_}|Cs]) -> fmcc_cons(E, {yes,C}, Cs);
+fmcc(E, [C|Cs]) -> [{maybe,C}|fmcc(E, Cs)];
 fmcc(_, []) -> [].
-fmcc_cons(E, C={clause,_,_,[],_}, Cs) -> [C];
-fmcc_cons(E, C={clause,L,P,Guard,B}, Cs) ->
+fmcc_cons(E, C={Taken,{clause,_,_,[],_}}, Cs) -> [C];
+fmcc_cons(E, C={Taken,{clause,L,P,Guard,B}}, Cs) ->
     case static_eval(E, Guard) of
-        true -> [{clause,L,P,[],B}];
+        true -> [{Taken,{clause,L,P,[],B}}];
         false -> fmcc(E, Cs);
         _ -> [C|fmcc(E, Cs)]
     end.
@@ -79,6 +71,14 @@ fmcc_cons(E, C={clause,L,P,Guard,B}, Cs) ->
 static_eval(_, [[{atom,_,true}]]) -> true;
 static_eval(_, [[{atom,_,_}]]) -> false;
 static_eval(_, _) -> maybe.
+
+
+%% Perform one simplification on a case expression. Given the bound
+%% variables Bs and the expression E (which must be a constructor),
+%% return a new E and a new list of clauses along with substitutions.
+
+simplify(Bs, E, Cs) ->
+    {E,[{C,[]} || C <- Cs]}.
 
 %% Given the bound variables Bs and the expression E (which must be a
 %% constructor and simple), return a new E and the list

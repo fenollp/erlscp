@@ -69,8 +69,8 @@ drive(Env0, {'fun',Line,{clauses,Cs0}}, R) ->   %R6
     {Env,Cs} = drive_clauses(Env0, Cs0),
     build(Env, {'fun',Line,{clauses,Cs}}, R);
 
-%% drive(Env0, {'block',Lb,[{'match',Lm,P0,E0},Rest0]}, R) ->
-%%     ;
+drive(Env0, E={'block',Lb,[{'match',Lm,P0,E0},Rest]}, R) ->
+    drive(Env0, scp_expr:make_case(Lb, E0, [{clause,Lm,[P0],[],[Rest]}]), R);
 drive(Env0, {'block',Line,[A0,B0]}, R) ->       %New rule
     {Env1, A} = drive(Env0, A0, []),
     {Env, B} = drive(Env1, B0, R),
@@ -87,6 +87,8 @@ drive(Env0, {op,L,Op,E0,E1}, R) ->
 
 drive(Env0, {'call',L,F,Args}, R) ->            %R12
     drive(Env0, F, [#call_ctxt{line=L, args=Args}|R]);
+
+%% TODO: tuple, prefix op
 
 drive(Env0, {'case',L,E,Cs}, R) ->              %R13
     drive(Env0, E, [#case_ctxt{line=L, clauses=Cs}|R]);
@@ -236,15 +238,16 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
 drive_const_case(Env0, E, Ctxt=[CR=#case_ctxt{clauses=Cs0}|R]) ->
     %% E is a constant.
     case scp_pattern:find_matching_const(E, Cs0) of
-        [{clause,L,_,[],B}] ->
+        [{yes,{clause,L,P,[],B}}] ->
             drive(Env0, scp_expr:list_to_block(L, B), R);
         [] ->
             %% No clauses can match, so preserve the error. It's
             %% possible to make a case without any clauses, but if
             %% printed it can't be parsed back.
             build(Env0, E, Ctxt);
-        Cs ->
+        Possibles ->
             %% Some impossible clauses may have been removed.
+            {_,Cs} = lists:unzip(Possibles),
             build(Env0, E, [CR#case_ctxt{clauses=Cs}|R])
     end.
 

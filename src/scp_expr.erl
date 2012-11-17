@@ -58,6 +58,7 @@ is_simple(_) -> false.
 %% Construction of case expressions.
 make_case(Line, E0={tuple,_,[A]}, Cs0) ->
     %% Do not construct a tuple if it can be avoided.
+    %% TODO: this check will be very redundant soon
     AllOne = lists:all(fun ({clause,_,[P],G,B}) ->
                                case P of
                                    {tuple,_,[_]} -> true;
@@ -78,15 +79,7 @@ make_case(Line, E, Cs) ->
     make_case_1(Line, E, Cs).
 
 make_case_1(Line, E, Cs0) ->
-    %% Cs = lists:filter(fun ({clause,_,[P],G,B}) ->
-    %%                           scp_pattern:is_match_possible(E, P, G)
-    %%                   end,
-    %%                   Cs0),
-    Cs=[],
-    case Cs of
-        [] -> {'case',Line,E,Cs0};
-        _ -> {'case',Line,E,Cs}
-    end.
+    {'case',Line,E,Cs0}.
 
 %% Conversion between global and local functions.
 function_to_fun({function,Line,_Name,_Arity,Clauses}) ->
