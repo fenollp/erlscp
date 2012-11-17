@@ -9,6 +9,7 @@
          function_to_fun/1, fun_to_function/3,
          simplify/1,
          variables/1, free_variables/2, subst/2,
+         matches/1,
          fresh_variables/3, gensym/2,
          alpha_convert/2,
          make_letrec/3, extract_letrecs/1,
@@ -127,6 +128,18 @@ variables0(Expr) ->
             lists:map(fun (Es) -> lists:map(fun variables0/1, Es) end,
                       erl_syntax:subtrees(Expr))
     end.
+
+%% The matches contained in the expression.
+matches(Expr) -> lists:flatten(matches0(Expr)).
+matches0(Expr) ->
+    case erl_syntax:type(Expr) of
+        match ->
+            [Expr];
+        _ ->
+            lists:map(fun (Es) -> lists:map(fun matches0/1, Es) end,
+                      erl_syntax:subtrees(Expr))
+    end.
+
 
 %% Generate a fresh variable.
 gensym(Env0, Prefix) ->
@@ -386,22 +399,24 @@ extrecs_1(E,Ls) ->
 
 find_renaming(Env, Expr) ->
     %% TODO: check if it's necessary to know which names are bound
-    io:fwrite("Is ~p a renaming of something in ~p?~n",[Expr,Env#env.ls]),
-    find_renaming_1(Env#env.ls, Expr).
+    io:fwrite("Is ~p a renaming of something in~n ~p?~n",[Expr,Env#env.ls]),
+    find_renaming_1(sets:new(), Env#env.ls, Expr).
 
-find_renaming_1([{Fname,E}|Es], Expr) ->
+find_renaming_1(B, [{Fname,E}|Es], Expr) ->
     %% Find out if the old expression E is a renaming of Expr.
-    case is_renaming(E, Expr) of
+    case is_renaming(B, E, Expr) of
         true -> {ok,Fname};
-        false -> find_renaming_1(Es, Expr)
+        false -> find_renaming_1(B, Es, Expr)
     end;
-find_renaming_1([], Expr) ->
+find_renaming_1(_B, [], Expr) ->
     false.
 
-is_renaming(E1, E2) ->
-    case find_var_subst([{E1,E2}]) of
+%% Is E1 the same as E2 up to variable renaming? The expressions must
+%% have been alpha converted first.
+is_renaming(B, E1, E2) ->
+    case find_var_subst(B, [{E1,E2}]) of
         {ok,S} ->
-            io:fwrite("E1: ~p, E2: ~p~n", [E1,E2]),
+            io:fwrite("is_renaming.~nE1: ~p~nE2: ~p~n", [E1,E2]),
             io:fwrite("S: ~p~n",[S]),
             io:fwrite("Afterwards: ~p~n", [subst(dict:from_list(S), E2)]),
             subst(dict:from_list(S), E2) == E2;
@@ -413,44 +428,97 @@ is_renaming(E1, E2) ->
 %% It then finds a substitution that when applied to E1 would return
 %% E2 (and so on for the rest of the list). It will only create
 %% variable to variable substitions, everything else must be the same.
-find_var_subst([]) -> {ok,[]};
-find_var_subst([{{integer,_,V},{integer,_,V}}|T]) -> find_var_subst(T);
-find_var_subst([{{float,_,V},{float,_,V}}|T]) -> find_var_subst(T);
-find_var_subst([{{atom,_,V},{atom,_,V}}|T]) -> find_var_subst(T);
-find_var_subst([{{string,_,V},{string,_,V}}|T]) -> find_var_subst(T);
-find_var_subst([{{char,_,V},{char,_,V}}|T]) -> find_var_subst(T);
-find_var_subst([{{nil,_},{nil,_}}|T]) -> find_var_subst(T);
-find_var_subst([{{var,_,N},{var,_,N}}|T]) ->
+find_var_subst(B, []) -> {ok,[]};
+find_var_subst(B, [{{integer,_,V},{integer,_,V}}|T]) -> find_var_subst(B, T);
+find_var_subst(B, [{{float,_,V},{float,_,V}}|T]) -> find_var_subst(B, T);
+find_var_subst(B, [{{atom,_,V},{atom,_,V}}|T]) -> find_var_subst(B, T);
+find_var_subst(B, [{{string,_,V},{string,_,V}}|T]) -> find_var_subst(B, T);
+find_var_subst(B, [{{char,_,V},{char,_,V}}|T]) -> find_var_subst(B, T);
+find_var_subst(B, [{{nil,_},{nil,_}}|T]) -> find_var_subst(B, T);
+find_var_subst(B, [{{var,_,N},{var,_,N}}|T]) ->
     %% The same variable in both expressions. No need for a
     %% substitution.
-    find_var_subst(T);
-find_var_subst([{{var,_,_},{var,_,'_'}}|T]) -> false;
-find_var_subst([{{var,_,'_'},{var,_,_}}|T]) -> false;
-find_var_subst([{{var,_,N1},E2={var,_,N2}}|T]) ->
-    %% Make a substitution from N1 to E2.
-    Sd = dict:from_list([{N1,E2}]),
-    case find_var_subst([{subst(Sd, A),subst(Sd, B)} || {A,B} <- T]) of
-        {ok,Ss} -> {ok,[{N1,E2}|Ss]};
-        false -> false
+    find_var_subst(B, T);
+find_var_subst(B, [{{var,_,_},{var,_,'_'}}|T]) -> false;
+find_var_subst(B, [{{var,_,'_'},{var,_,_}}|T]) -> false;
+find_var_subst(B, [{{var,_,N1},E2={var,_,N2}}|T]) ->
+    Bound1 = sets:is_element(N1, B),
+    Bound2 = sets:is_element(N2, B),
+    if Bound1 or Bound2 ->
+            %% The variables are different and one of them is bound. A
+            %% renaming is not possible.
+            false;
+       true ->
+            %% Make a substitution from N1 to E2.
+            Sd = dict:from_list([{N1,E2}]),
+            find_var_subst(B, [{subst(Sd, A),subst(Sd, B)} || {A,B} <- T],
+                           [{N1,E2}])
     end;
-find_var_subst([{{call,_,F1,As1},{call,_,F2,As2}}|T]) when length(As1) == length(As2) ->
-    find_var_subst([{F1,F2} | lists:zip(As1,As2)] ++ T);
-%% find_var_subst([{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T]) when length(Cs1) == length(Cs2) ->
-%%     find_var_subst([{E1,E2} | ... ] ++  T);
-%% TODO: case, fun, cons, tuple, etc...
-find_var_subst([{E1,E2}|T]) ->
+find_var_subst(B, [{{call,_,F1,As1},{call,_,F2,As2}}|T]) when length(As1) == length(As2) ->
+    find_var_subst(B, [{F1,F2} | lists:zip(As1,As2)] ++ T);
+find_var_subst(B, [{{tuple,_,Es1},{tuple,_,Es2}}|T]) when length(Es1) == length(Es2) ->
+    find_var_subst(B, lists:zip(Es1,Es2) ++ T);
+find_var_subst(B, [{{cons,_,H1,T1},{cons,_,H2,T2}}|T]) ->
+    find_var_subst(B, [{H1,H2}, {T1,T2} | T]);
+find_var_subst(B, [{{op,_,Op,L1,R1},{op,_,Op,L2,R2}}|T]) ->
+    find_var_subst(B, [{L1,L2}, {R1,R2} | T]);
+find_var_subst(B, [{{op,_,Op,A1},{op,_,Op,A2}}|T]) ->
+    find_var_subst(B, [{A1,A2} | T]);
+find_var_subst(B, [{{block,_,Es1},{block,_,Es2}}|T]) when length(Es1) == length(Es2) ->
+    find_var_subst(B, lists:zip(Es1,Es2) ++ T);
+find_var_subst(B0, [{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T]) when length(Cs1) == length(Cs2) ->
+    {Ps10,Gs10,Bs1} = unzip_clauses(Cs1),
+    {Ps20,Gs20,Bs2} = unzip_clauses(Cs2),
+    [Ps1,Ps2,Gs1,Gs2] = lists:map(fun lists:flatten/1, [Ps10,Ps20,Gs10,Gs20]),
+    if length(Ps1) == length(Ps2) andalso
+       length(Gs1) == length(Gs2) andalso
+       length(Bs1) == length(Bs2) ->
+            %% XXX: extract new bindings from the patterns and add them to B
+            %% io:fwrite("Ps1=~p~nPs2=~p~n",[Ps1,Ps2]),
+            %% io:fwrite("Work=~p~n",[[{E1,E2}] ++ lists:zip(Ps1,Ps2)]),
+            case find_var_subst(B0, [{E1,E2}] ++ lists:zip(Ps1,Ps2)) of
+                {ok,Ss} ->
+                    %%io:fwrite("Ss=~p~n",[Ss]),
+                    %% The variables from Ps1 and Ps2 are bound in the
+                    %% rest of the work. This is imprecise, but alpha
+                    %% conversion should make it work.
+                    Vars = lists:flatmap(fun scp_pattern:pattern_variables/1,
+                                         Ps1 ++ Ps1),
+                    %%io:fwrite("Vars=~p~n",[Vars]),
+                    B = sets:union(sets:from_list(Vars), B0),
+                    Bodies = lists:flatmap(fun ({Body1,Body2}) ->
+                                               lists:zip(Body1,Body2)
+                                       end,
+                                       lists:zip(Bs1, Bs2)),
+                    %% io:fwrite("new work=~p~n", [lists:zip(Gs1, Gs2) ++
+                    %%                                 Bodies ++ T]),
+                    %% Processing the patterns may have resulted in
+                    %% new variable substitutions. Apply these to the
+                    %% rest of the work.
+                    Sd = dict:from_list(Ss),
+                    NewT = [{subst(Sd, X),subst(Sd, Y)} ||
+                               {X,Y} <- lists:zip(Gs1, Gs2) ++ Bodies ++ T],
+                    find_var_subst(B, NewT, Ss);
+                false -> false
+            end;
+       true ->
+            false
+    end;
+%% TODO: fun, etc...
+find_var_subst(B, [{E1,E2}|T]) ->
     %% If two expressions have different types then there can't be a
     %% renaming.
-    io:fwrite("r fallthrough:~n ~p~n ~p~n",[E1,E2]),
     T1 = erl_syntax:type(E1),
     T2 = erl_syntax:type(E2),
+    io:fwrite("r fallthrough: B=~p, ~p,~p~n ~p~n ~p~n",[B,T1,T2,E1,E2]),
     case T1 == T2 of
         true ->
             %% XXX: Fill in all supported expression types here. This
             %% is here because the function is not completed yet.
             case lists:member(T1,
                               [integer,float,atom,string,char,nil,
-                               variable,underscore,application,'case']) of
+                               variable,underscore,application,case_expr,
+                               list,infix_expr,prefix_expr]) of
                 true -> true
             end,
             false;
@@ -459,9 +527,29 @@ find_var_subst([{E1,E2}|T]) ->
             false
     end.
 
+find_var_subst(B, T, NewSubst) ->
+    %% Appends a substitution list to the substitution that results
+    %% from the unprocessed work T0.
+    case find_var_subst(B, T) of
+        {ok,Substs} ->
+            {ok,NewSubst++Substs};
+        false ->
+            false
+    end.
+
+
+unzip_clauses(Cs) ->
+    lists:unzip3(lists:map(fun ({clause,_,P,G,B}) -> {P,G,B} end,
+                           Cs)).
+
 %% TODO: Linearity and strictness.
 
 %% EUnit tests.
+
+read(S) ->
+    {ok, Tokens, _} = erl_scan:string("x()->"++S++"."),
+    {ok, {function,_,_,_,[{clause,L,[],[],B}]}} = erl_parse:parse_form(Tokens),
+    list_to_block(L,B).
 
 fv0_test() ->
     ['Y'] = free_variables({match,1,{var,1,'X'},{var,1,'Y'}}).
@@ -581,6 +669,9 @@ ac7_test() ->
            {var,69,'B'}]},
     check_ac(E0).
 
+ac8_test() ->
+    E0 = read("case X of [dit|Xs] -> 0; [dat|Xs] -> 1 end, Xs"),
+    check_ac(E0).
 
 vars_test() ->
     E0 = {op,48,'+',
@@ -643,9 +734,54 @@ letrec_test() ->
     [{Fname,Arity,Fun}] = Funs.
 
 renaming0_test() ->
-    true = is_renaming({call,1,{atom,1,append},[{var,1,'Xs'},{var,1,'Xs'}]},
-                       {call,1,{atom,1,append},[{var,1,'Xs'},{var,1,'Xs'}]}).
+    true = is_renaming(sets:new(),
+                       read("append(Xs,Xs)"),
+                       read("append(Xs,Xs)")).
 
 renaming1_test() ->
-    true = is_renaming({call,1,{atom,1,append},[{var,1,'Xs'},{var,1,'Xs'}]},
-                       {call,1,{atom,1,append},[{var,1,'Ys'},{var,1,'Ys'}]}).
+    true = is_renaming(sets:new(),
+                       read("append(Xs,Xs)"),
+                       read("append(Ys,Ys)")).
+
+renaming2_test() ->
+    true = is_renaming(sets:new(),
+                       read("case 1 of X -> X end"),
+                       read("case 1 of Y -> Y end")).
+
+renaming3_test() ->
+    true = is_renaming(sets:new(),
+                       read("case 1 of X -> X end, X"),
+                       read("case 1 of Y -> Y end, Y")).
+
+renaming4_test() ->
+    false = is_renaming(sets:new(),
+                        read("case 1 of X -> X end, X"),
+                        read("case 1 of Y -> Y end, X")).
+
+renaming5_test() ->
+    false = is_renaming(sets:new(),
+                        read("case 1 of X -> X end, X"),
+                        read("case 1 of Y -> X end, Y")).
+
+renaming6_test() ->
+    false = is_renaming(sets:new(),
+                        read("append(Xs,Xs)"),
+                        read("append(append(Xs,Ys),Zs)")).
+
+renaming7_test() ->
+    true = is_renaming(sets:new(), read("[X|Xs]"), read("[Y|Ys]")).
+
+renaming8_test() ->
+    false = is_renaming(sets:new(), read("[X,X|Xs]"), read("[X,Y|Ys]")).
+
+renaming9_test() ->
+    true = is_renaming(sets:new(), read("X+(-X)"), read("Y+(-Y)")).
+
+renaming10_test() ->
+    false = is_renaming(sets:new(), read("X+(-X)"), read("Y-(-Y)")).
+
+renaming11_test() ->
+    true = is_renaming(sets:new(), read("{X,Y,Z}"), read("{A,B,C}")).
+
+renaming12_test() ->
+    false = is_renaming(sets:new(), read("{X,Y,Z}"), read("{Z,Y,X}")).
