@@ -77,8 +77,39 @@ sum([X|Xs]) -> X + sum(Xs).
 
 square(X) -> X * X.
 
-map(Fun,[]) -> [];
+map(_,[]) -> [];
 map(Fun,[X|Xs]) -> [Fun(X)|map(Fun,Xs)].
 
 sumsqs(Xs) ->
     sum(map(fun square/1, Xs)).
+
+atom_test() ->
+    case false of
+        true -> 0;
+        false -> 1
+    end.
+
+tuple_test() ->
+    case {} of
+        {X} -> 0;
+        {} -> 1
+    end.
+
+integer_test() ->
+    case 5 of
+        4 -> 0;
+        5 -> 1
+    end.
+
+string_test() ->
+    case "foo" of
+        "bar" -> 0;
+        "foo" -> 1
+    end.
+
+guard_test() ->
+    X = 1,
+    case foo of
+        bar -> 0;
+        foo when X == 1 -> 1
+    end.

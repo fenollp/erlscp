@@ -22,20 +22,17 @@ head_variables(Head) ->
 extend_bound(Env,Vars) ->
     Env#env{bound=sets:union(Env#env.bound, Vars)}.
 
-is_const({integer,_,_}) -> true;
-is_const({float,_,_}) -> true;
-is_const({atom,_,_}) -> true;
-is_const({string,_,_}) -> true;
-is_const({char,_,_}) -> true;
-is_const({nil,_}) -> true;
-is_const(_) -> false.
-
 %% The driving algorithm. The environment is used to pass information
 %% downwards and upwards the stack. R is the current context.
 
 %% Evaluation rules.
-%% drive(Env0, {'integer',L0,C}, [Ctxt=#case_ctxt{}|R]) ->  %R1
-%%     ;
+drive(Env0, E={T,_,_}, R=[#case_ctxt{clauses=Cs0}|_])
+  when T=='integer'; T=='float'; T=='atom'; T=='string'; T=='char' -> %R1
+    drive_const_case(Env0, E, R);
+drive(Env0, E={nil,_}, R=[#case_ctxt{clauses=Cs0}|_]) -> %R1
+    drive_const_case(Env0, E, R);
+drive(Env0, E={tuple,_,[]}, R=[#case_ctxt{clauses=Cs0}|_]) -> %R1
+    drive_const_case(Env0, E, R);
 
 drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
     %% This is a function call to a local function or a BIF.
@@ -45,6 +42,11 @@ drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
         _ -> build(Env0, E, R)
     end;
 %% TODO: R3 for 'fun' references in any context
+
+drive(Env0, E, R=[#case_ctxt{clauses=Cs0}|_])
+  when element(1,E) == 'cons'; element(1,E) == 'tuple';
+       element(1,E) == 'bin'; element(1,E) == 'record' -> %R4
+    drive_constructor_case(Env0, E, R);
 
 drive(Env0, {'fun',Lf,{clauses,Cs0}}, [#call_ctxt{line=Lc,args=As}|R]) -> %R5
     %% This is how inlining happens. The original rule uses a let, but
@@ -69,7 +71,7 @@ drive(Env0, {'fun',Line,{clauses,Cs0}}, R) ->   %R6
 
 %% drive(Env0, {'block',Lb,[{'match',Lm,P0,E0},Rest0]}, R) ->
 %%     ;
-drive(Env0, {'block',Line,[A0,B0]}, R) ->
+drive(Env0, {'block',Line,[A0,B0]}, R) ->       %New rule
     {Env1, A} = drive(Env0, A0, []),
     {Env, B} = drive(Env1, B0, R),
     {Env, scp_expr:make_block(Line, A, B)};
@@ -180,6 +182,10 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
                     %% TODO: test this case
                     Expr={'fun',Line,{function,{atom,Line,Fname},length(FV)}};
                 _ ->
+                    %% TODO: check if instead of computing FV it's
+                    %% possible to use the renaming that
+                    %% find_renaming() created, applied to the FV from
+                    %% when the function was created.
                     Expr={'call',Line,{atom,Line,Fname},[{var,Line,X} || X <- FV]}
             end,
             {Env0,Expr};
@@ -224,6 +230,46 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
             Letrec = scp_expr:make_letrec(Line,[{Fname,length(FV),NewFun}],[NewTerm]),
             {Env6,Letrec}
     end.
+
+
+%% Driving of case expressions.
+drive_const_case(Env0, E, Ctxt=[CR=#case_ctxt{clauses=Cs0}|R]) ->
+    %% E is a constant.
+    case scp_pattern:find_matching_const(E, Cs0) of
+        [{clause,L,_,[],B}] ->
+            drive(Env0, scp_expr:list_to_block(L, B), R);
+        [] ->
+            %% No clauses can match, so preserve the error. It's
+            %% possible to make a case without any clauses, but if
+            %% printed it can't be parsed back.
+            build(Env0, E, Ctxt);
+        Cs ->
+            %% Some impossible clauses may have been removed.
+            build(Env0, E, [CR#case_ctxt{clauses=Cs}|R])
+    end.
+
+drive_constructor_case(Env0, E0, Ctxt=[#case_ctxt{clauses=Cs0}|R]) ->
+    %% E is a constructor.
+    case scp_pattern:find_matching_clauses(Env0#env.bound, E0, Cs0) of
+        %% {E,[{Clause={clause,L,P,[],B0},Lets}]} ->
+        %%     %% XXX: should only do one variable at a time
+        %%     io:fwrite("simplified case: E=~p~n Ctxt=~p~n Lets=~p~n", [E0,Ctxt,Lets]),
+        %%     B1 = scp_expr:list_to_block(L, B0),
+        %%     io:fwrite("B1=~p~n", [B1]),
+        %%     B = lists:foldl(
+        %%           fun ({{var,_,N},Rhs}, B2) ->
+        %%                   %% Propagates positive information.
+        %%                   %% TODO: must test for linearity, strictness or termination
+        %%                   io:fwrite("substitute: ~p~n",[{N,Rhs}]),
+        %%                   scp_expr:subst(dict:from_list([{N,Rhs}]), B2)
+        %%           end, B1, Lets),
+        %%     io:fwrite("B=~p~n", [B]),
+        %%     drive(Env0, B, R);
+        Foo ->
+            io:fwrite("constructor case: E=~p~n Ctxt=~p~n Foo=~p~n", [E0,Ctxt,Foo]),
+            build(Env0, E0, Ctxt)
+    end.
+
 
 
 %% Plug an expression into a context.
