@@ -26,3 +26,4 @@
 -record(call_ctxt, {line, args}).           %call(<hole>, args...)
 -record(case_ctxt, {line, clauses}).        %case <hole> of clauses...
 -record(cons_ctxt, {line, tail}).           %[<hole>|tail]
+-record(match_ctxt, {line, pattern}).       %pattern = <hole>

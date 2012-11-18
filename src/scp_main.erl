@@ -90,16 +90,20 @@ drive(Env0, {'call',L,F,Args}, R) ->            %R12
 
 %% TODO: tuple, prefix op
 
+drive(Env0, {'match',L,P,E}, R) ->
+    %% XXX: pushes match into case clauses etc
+    drive(Env0, E, [#match_ctxt{line=L,pattern=P}|R]);
+
 drive(Env0, {'case',L,E,Cs}, R) ->              %R13
     drive(Env0, E, [#case_ctxt{line=L, clauses=Cs}|R]);
 
 %% Fallthrough.
 drive(Env0, Expr, R) ->                         %R14
     io:fwrite("~n%% Fallthrough!~n", []),
-    io:fwrite("%% Env: ~p~n%% Expr: ~p~n%% R: ~p~n",
-              [Env0#env{forms=x,
-                        global=dict:fetch_keys(Env0#env.global),
-                        local=dict:fetch_keys(Env0#env.local)},
+    io:fwrite("%% Expr: ~p~n%% R: ~p~n",
+               [%%Env0#env{forms=x,
+              %%           global=dict:fetch_keys(Env0#env.global),
+              %%           local=dict:fetch_keys(Env0#env.local)},
                Expr, R]),
     build(Env0, Expr, R).
 
@@ -124,6 +128,10 @@ build(Env0, Expr, [#case_ctxt{line=Line, clauses=Cs0}|R]) ->
         _ ->                                    %R19
             build_case_general(Env0, Expr, Line, Cs0, R)
     end;
+build(Env0, Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
+    %% This is a lone match at the end of a block.
+    Match = {match,Line,P,Expr},
+    build(Env0, Match, R);
 
 build(Env, Expr, []) ->                         %R20
     {Env, Expr}.
@@ -237,7 +245,7 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
 %% Driving of case expressions.
 drive_const_case(Env0, E, Ctxt=[CR=#case_ctxt{clauses=Cs0}|R]) ->
     %% E is a constant.
-    case scp_pattern:find_matching_const(E, Cs0) of
+    case scp_pattern:find_matching_const(Env0#env.bound, E, Cs0) of
         [{yes,{clause,L,P,[],B}}] ->
             drive(Env0, scp_expr:list_to_block(L, B), R);
         [] ->
@@ -251,39 +259,48 @@ drive_const_case(Env0, E, Ctxt=[CR=#case_ctxt{clauses=Cs0}|R]) ->
             build(Env0, E, [CR#case_ctxt{clauses=Cs}|R])
     end.
 
-drive_constructor_case(Env0, E0, Ctxt=[#case_ctxt{clauses=Cs0}|R]) ->
-    %% E is a constructor.
-    case scp_pattern:find_matching_clauses(Env0#env.bound, E0, Cs0) of
-        %% {E,[{Clause={clause,L,P,[],B0},Lets}]} ->
-        %%     %% XXX: should only do one variable at a time
-        %%     io:fwrite("simplified case: E=~p~n Ctxt=~p~n Lets=~p~n", [E0,Ctxt,Lets]),
-        %%     B1 = scp_expr:list_to_block(L, B0),
-        %%     io:fwrite("B1=~p~n", [B1]),
-        %%     B = lists:foldl(
-        %%           fun ({{var,_,N},Rhs}, B2) ->
-        %%                   %% Propagates positive information.
-        %%                   %% TODO: must test for linearity, strictness or termination
-        %%                   io:fwrite("substitute: ~p~n",[{N,Rhs}]),
-        %%                   scp_expr:subst(dict:from_list([{N,Rhs}]), B2)
-        %%           end, B1, Lets),
-        %%     io:fwrite("B=~p~n", [B]),
-        %%     drive(Env0, B, R);
+drive_constructor_case(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0}|R]) ->
+    case scp_pattern:simplify(Env0#env.bound, E0, Cs0) of
+        {_,_,[]} ->
+            %% All the clauses disappeared. Preserve the error in the
+            %% residual program.
+            build(Env0, E0, Ctxt);
+        {E0,nothing,SCs} ->
+            Cs = [C || {C,nothing} <- SCs],
+            case Cs of
+                Cs0 ->
+                    %% The expression didn't change and neither did
+                    %% the clauses.
+                    build(Env0, E0, [CR#case_ctxt{clauses=Cs}|R]);
+                _ ->
+                    %% The expression didn't change, but some clause
+                    %% may have been removed.
+                    drive(Env0, E0, [CR#case_ctxt{clauses=Cs}|R])
+            end;
+        {E,nothing,SCs} ->
+            %% A new expression, so driving might improve it further.
+            Cs = [C || {C,nothing} <- SCs],
+            drive(Env0, E, [CR#case_ctxt{clauses=Cs}|R]);
+        %% {E,Rhs,SCs} ->
+        %%     %% An expression was removed from the constructor.
+        %% ;
         Foo ->
-            io:fwrite("constructor case: E=~p~n Ctxt=~p~n Foo=~p~n", [E0,Ctxt,Foo]),
+            %% Something more clever happened.
+            io:fwrite("constructor case default: E=~p~n Ctxt=~p~n Foo=~p~n", [E0,Ctxt,Foo]),
             build(Env0, E0, Ctxt)
     end.
 
-
-
 %% Plug an expression into a context.
-plug(Expr, []) ->
-    Expr;
 plug(Expr, [#call_ctxt{line=Line, args=Args}|R]) ->
     plug({call,Line,Expr,Args}, R);
 plug(Expr, [#case_ctxt{line=Line, clauses=Cs}|R]) ->
     plug(scp_expr:make_case(Line,Expr,Cs), R);
 plug(Expr, [#cons_ctxt{line=Line, tail=T}|R]) ->
-    plug({cons,Line,Expr,T}, R).
+    plug({cons,Line,Expr,T}, R);
+plug(Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
+    plug({match,Line,Expr,P}, R);
+plug(Expr, []) ->
+    Expr.
 
 %% EUnit tests.
 

@@ -25,6 +25,9 @@ list_to_block(Line,[X|Xs]) ->
 
 %% From Oscar Waddell's dissertation. The return expression for whole
 %% the block becomes the second expression of the block.
+
+%% TODO: this should instead create a structure where matches in E1
+%% become structured like let.
 make_block(L0, E1, E2) ->
     case is_simple(E1) of
         true -> E2;
@@ -39,11 +42,14 @@ make_block(L0, E1, E2) ->
                   end,
             case E2 of
                 {'block',L1,[E3,E4]} ->
-                    {'block',L1,{'block',L0,[E1n,E3]},E4};
+                    {'block',L1,[{'block',L0,[E1n,E3]},E4]};
                 _ ->
                     {'block',L0,[E1n,E2]}
             end
     end.
+
+make_case(Line, E, Cs0) ->
+    {'case',Line,E,Cs0}.
 
 is_simple({var,_,_}) -> true;
 is_simple({integer,_,_}) -> true;
@@ -54,32 +60,6 @@ is_simple({char,_,_}) -> true;
 is_simple({nil,_}) -> true;
 is_simple({'fun',_,_}) -> true;
 is_simple(_) -> false.
-
-%% Construction of case expressions.
-make_case(Line, E0={tuple,_,[A]}, Cs0) ->
-    %% Do not construct a tuple if it can be avoided.
-    %% TODO: this check will be very redundant soon
-    AllOne = lists:all(fun ({clause,_,[P],G,B}) ->
-                               case P of
-                                   {tuple,_,[_]} -> true;
-                                   _ -> false
-                               end
-                       end, Cs0),
-    if AllOne == true ->
-            E = A,
-            Cs = lists:map(fun ({clause,Lc,[{tuple,_,[P0]}],G,B}) ->
-                                   {clause,Lc,[P0],G,B}
-                           end, Cs0);
-       true ->
-            E = E0,
-            Cs = Cs0
-    end,
-    make_case_1(Line, E, Cs);
-make_case(Line, E, Cs) ->
-    make_case_1(Line, E, Cs).
-
-make_case_1(Line, E, Cs0) ->
-    {'case',Line,E,Cs0}.
 
 %% Conversion between global and local functions.
 function_to_fun({function,Line,_Name,_Arity,Clauses}) ->

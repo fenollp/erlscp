@@ -72,6 +72,18 @@ ap([X|Xs],Ys) -> [X|ap(Xs,Ys)].
 ap3(Xs,Ys,Zs) ->
     ap(ap(Xs,Ys),Zs).
 
+%% These like these should be made with quickcheck and should be in a
+%% different module so that they are not supercompiled.
+%% ap3_test() ->
+%%     X = [1,2,3],
+%%     Y = [a,b,c],
+%%     Z = [9,8,7],
+%%     Ap3 = ap3(X,Y,Z),
+%%     Ap3 = ap(ap(X,Y),Z),
+%%     Ap3 = ap(X,ap(Y,Z)),
+%%     Ap3 = X++ap(Y,Z),
+%%     Ap3 = X++Y++Z.
+
 sum([]) -> 0;
 sum([X|Xs]) -> X + sum(Xs).
 
@@ -84,39 +96,74 @@ sumsqs(Xs) ->
     sum(map(fun square/1, Xs)).
 
 atom_test() ->
-    case false of
-        true -> 0;
-        false -> 1
-    end.
+    1 = case false of
+            true -> 0;
+            false -> 1
+        end.
 
 tuple_test() ->
-    case {} of
-        {X} -> 0;
-        {} -> 1
-    end.
+    1 = case {} of
+            {X} -> 0;
+            {} -> 1
+        end.
 
 integer_test() ->
-    case 5 of
-        4 -> 0;
-        5 -> 1
-    end.
+    1 = case 5 of
+            4 -> 0;
+            5 -> 1
+        end.
 
 string_test() ->
-    case "foo" of
-        "bar" -> 0;
-        "foo" -> 1
-    end.
+    1 = case "foo" of
+            "bar" -> 0;
+            "foo" -> 1
+        end.
 
 char_test() ->
-    case $B of
-        $A -> 0;
-        $B -> 1;
-        $C -> 2
-    end.
+    1 = case $B of
+            $A -> 0;
+            $B -> 1;
+            $C -> 2
+        end.
 
 guard_test() ->
     Xyzzy = 1,
-    case foo of
-        bar -> 0;
-        foo when Xyzzy == 1 -> 1
+    1 = case foo of
+            bar -> 0;
+            foo when Xyzzy == 1 -> 1
+        end.
+
+simplify_test() ->
+    1 = case {foo} of
+            foo -> wrong;
+            {bar} -> 0;
+            {foo} -> 1
+        end.
+
+bound_test() ->
+    X = 1,
+    1 = case 1 of
+            X -> 1;
+            Y -> 0
+        end.
+
+unbound_test() ->
+    X = 1,
+    1 = case 1 of
+            Y -> 1;
+            X -> 0;
+            _ -> vat
+        end.
+
+trival_cons_test() ->
+    1 = case [1] of
+        [1] -> 1;
+        [2] -> 0
     end.
+
+match_test() ->
+    X = 1,
+    X = case hd([foo]) of
+            foo -> 1;
+            bar -> 0
+        end.
