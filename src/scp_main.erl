@@ -99,16 +99,16 @@ drive(Env0, E={T,_,_}, Ctxt=[#op_ctxt{line=L, op=Op, e1=hole, e2=E2}|R])
 
 drive(Env0, {cons,L,H,T}, R) ->                 %R11 for cons
     drive(Env0, H, [#cons_ctxt{line=L, tail=T}|R]);
-
 drive(Env0, {op,L,Op,E1,E2}, R) ->              %R11
     drive(Env0, E1, [#op_ctxt{line=L, op=Op, e2=E2}|R]);
 drive(Env0, {op,L,Op,E}, R) ->
     drive(Env0, E, [#op1_ctxt{line=L, op=Op}|R]);
+drive(Env0, {tuple,L,[A|As]}, R) ->
+    %% Drive on one element at a time.
+    drive(Env0, A, [#tuple_ctxt{line=L, todo=As}|R]);
 
 drive(Env0, {'call',L,F,Args}, R) ->            %R12
     drive(Env0, F, [#call_ctxt{line=L, args=Args}|R]);
-
-%% TODO: tuple
 
 drive(Env0, {'match',L,P,E}, R) ->
     %% XXX: pushes match into case clauses etc
@@ -128,6 +128,11 @@ drive(Env0, Expr, R) ->                         %R14
     build(Env0, Expr, R).
 
 %% Rebuilding expressions.
+build(Env0, Expr, [#tuple_ctxt{line=Line, done=Done, todo=[]}|R]) ->
+    build(Env0, {tuple,Line,lists:reverse([Expr|Done])}, R);
+build(Env0, Expr, [#tuple_ctxt{line=Line, done=Done, todo=[T|Ts]}|R]) ->
+    drive(Env0, T, [#tuple_ctxt{line=Line, done=[Expr|Done], todo=Ts}|R]);
+
 build(Env0, Expr, [#cons_ctxt{line=Line, tail=T0}|R]) ->  %R15 for cons
     %% The intuition here is that the head of the cons has been driven
     %% (c.f. R11) and now it's time to drive the tail and build a
@@ -198,14 +203,15 @@ drive_clause(Env0, {clause,L,Head,Guard,Body0}, _) ->
     Env = Env2#env{bound=Env0#env.bound},
     {Env,{clause,L,Head,Guard,[Body]}}.
 
-%% Driving of function calls.
+%% Driving of function calls. First try to find a renaming of an old
+%% expression. Then try to find a homeomorphic embedding. Then if that
+%% doesn't work, make a new function.
 drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
     %% It is safe to return {Env0,L} if things become difficult.
     io:fwrite("Call: ~p, ~w/~w, R: ~p~n", [Funterm,Name,Arity,R]),
     io:fwrite("Fun: ~p~n", [Fun0]),
     L = plug(Funterm, R),
     FV = scp_expr:free_variables(Env0#env.bound, L),
-    %% TODO: first try to find a renaming
     %% TODO: second try to find a homeomorphic embedding
 
     Renaming = scp_expr:find_renaming(Env0, L),
@@ -215,14 +221,10 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
         {ok,Fname} ->
             io:fwrite("Folding. Fname=~p, FV=~p~n",[Fname,FV]),
             case FV of
-                [] ->
-                    %% TODO: test this case
-                    Expr={'fun',Line,{function,{atom,Line,Fname},length(FV)}};
+                %% [] ->
+                %%     %% TODO: test this case
+                %%     Expr={'fun',Line,{function,Fname,length(FV)}};
                 _ ->
-                    %% TODO: check if instead of computing FV it's
-                    %% possible to use the renaming that
-                    %% find_renaming() created, applied to the FV from
-                    %% when the function was created.
                     Expr={'call',Line,{atom,Line,Fname},[{var,Line,X} || X <- FV]}
             end,
             {Env0,Expr};
@@ -241,10 +243,10 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
             {Env5,S} = scp_expr:fresh_variables(Env4, dict:new(), FV),
             %% The line numbers are probably going to be a bit wrong.
             case FV of
-                [] ->
-                    %% TODO: test this case
-                    NewFun0 = E,
-                    NewTerm = {'fun',Line,{function,{atom,Line,Fname},length(FV)}};
+                %% [] ->
+                %%     %% TODO: test this case
+                %%     NewFun0 = E,
+                %%     NewTerm = {'fun',Line,{function,Fname,length(FV)}};
                 _ ->
                     Head = [scp_expr:subst(S, {var,Line,X}) || X <- FV],
                     %% io:fwrite("S: ~p~n", [S]),
@@ -326,8 +328,14 @@ plug(Expr, [#cons_ctxt{line=Line, tail=T}|R]) ->
     plug({cons,Line,Expr,T}, R);
 plug(Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
     plug({match,Line,Expr,P}, R);
-%% plug(Expr, [#op_ctxt{line=Line, op=Op}|R]) ->
-%%     plug({op,Line,Op,Expr}, R);
+plug(Expr, [#op_ctxt{line=Line, op=Op, e1=hole, e2=E2}|R]) ->
+    plug({op,Line,Op,Expr,E2}, R);
+plug(Expr, [#op_ctxt{line=Line, op=Op, e1=E1, e2=hole}|R]) ->
+    plug({op,Line,Op,E1,Expr}, R);
+plug(Expr, [#op1_ctxt{line=Line, op=Op}|R]) ->
+    plug({op,Line,Op,Expr}, R);
+plug(Expr, [#tuple_ctxt{line=Line, done=Ds, todo=Ts}|R]) ->
+    plug({tuple,Line,lists:reverse([Expr|Ds])++Ts}, R);
 plug(Expr, []) ->
     Expr.
 

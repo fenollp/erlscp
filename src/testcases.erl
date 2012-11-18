@@ -101,7 +101,7 @@ atom_test() ->
             false -> 1
         end.
 
-tuple_test() ->
+tuple_case_test() ->
     1 = case {} of
             {X} -> 0;
             {} -> 1
@@ -179,3 +179,6 @@ div_test() ->
                     foo -> 1;
                     bar -> 0
                 end).
+
+tuple_test() ->
+    1=element(1,{tuple_case_test(),1+1,1+1+1}).
