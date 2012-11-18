@@ -9,6 +9,7 @@
 -include("scp.hrl").
 
 lookup_function(Env, K={Name,Arity}) ->
+    %% TODO: use local here and recognize letrecs in drive
     case dict:find(K, Env#env.global) of
         {ok,Fun} ->
             {ok,Fun};
@@ -33,6 +34,19 @@ drive(Env0, E={nil,_}, R=[#case_ctxt{clauses=Cs0}|_]) -> %R1
     drive_const_case(Env0, E, R);
 drive(Env0, E={tuple,_,[]}, R=[#case_ctxt{clauses=Cs0}|_]) -> %R1
     drive_const_case(Env0, E, R);
+
+drive(Env0, E2={T,_,_}, Ctxt=[#op_ctxt{line=L, op=Op, e1=E1, e2=hole}|R])
+  when T=='integer'; T=='float'; T=='atom'; T=='string'; T=='char' -> %R2
+    case apply_op(L, Op, E1, E2) of
+        {ok,V} -> drive(Env0, V, R);
+        _ -> build(Env0, E2, Ctxt)
+    end;
+drive(Env0, E1={T,_,_}, Ctxt=[#op1_ctxt{line=L, op=Op}|R])
+  when T=='integer'; T=='float'; T=='atom'; T=='string'; T=='char' -> %R2
+    case apply_op(L, Op, E1) of
+        {ok,V} -> drive(Env0, V, R);
+        _ -> build(Env0, E1, Ctxt)
+    end;
 
 drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
     %% This is a function call to a local function or a BIF.
@@ -79,16 +93,22 @@ drive(Env0, {'block',Line,Es}, R) ->
     drive(Env0, scp_expr:list_to_block(Line, Es), R);
 
 %% Focusing rules.
+drive(Env0, E={T,_,_}, Ctxt=[#op_ctxt{line=L, op=Op, e1=hole, e2=E2}|R])
+  when T=='integer'; T=='float'; T=='atom'; T=='string'; T=='char' -> %R10
+     drive(Env0, E2, [#op_ctxt{line=L, op=Op, e1=E}|R]);
+
 drive(Env0, {cons,L,H,T}, R) ->                 %R11 for cons
     drive(Env0, H, [#cons_ctxt{line=L, tail=T}|R]);
 
-drive(Env0, {op,L,Op,E0,E1}, R) ->
-    drive(Env0, E0, [#op_ctxt{line=L, op=Op, e1=E1}|R]);
+drive(Env0, {op,L,Op,E1,E2}, R) ->              %R11
+    drive(Env0, E1, [#op_ctxt{line=L, op=Op, e2=E2}|R]);
+drive(Env0, {op,L,Op,E}, R) ->
+    drive(Env0, E, [#op1_ctxt{line=L, op=Op}|R]);
 
 drive(Env0, {'call',L,F,Args}, R) ->            %R12
     drive(Env0, F, [#call_ctxt{line=L, args=Args}|R]);
 
-%% TODO: tuple, prefix op
+%% TODO: tuple
 
 drive(Env0, {'match',L,P,E}, R) ->
     %% XXX: pushes match into case clauses etc
@@ -114,9 +134,13 @@ build(Env0, Expr, [#cons_ctxt{line=Line, tail=T0}|R]) ->  %R15 for cons
     %% residual cons expression.
     {Env1,T1} = drive(Env0, T0, []),
     build(Env1, {cons,Line,Expr,T1}, R);
-build(Env0, Expr, [#op_ctxt{line=Line, op=Op, e1=E1}|R]) ->        %R15 for op
-    {Env1,E} = drive(Env0, E1, []),
+
+build(Env0, Expr, [#op_ctxt{line=Line, op=Op, e1=hole, e2=E2}|R]) ->        %R15
+    {Env1,E} = drive(Env0, E2, []),
     build(Env1, {op,Line,Op,Expr,E}, R);
+build(Env0, Expr, [#op_ctxt{line=Line, op=Op, e1=E1, e2=hole}|R]) ->        %R16
+    build(Env0, {op,Line,Op,E1,Expr}, R);
+
 build(Env0, Expr, [#call_ctxt{line=Line, args=Args0}|R]) -> %R17
     {Env,Args} = drive_list(Env0, fun drive/3, Args0),
     build(Env, {call,Line,Expr,Args}, R);
@@ -128,6 +152,9 @@ build(Env0, Expr, [#case_ctxt{line=Line, clauses=Cs0}|R]) ->
         _ ->                                    %R19
             build_case_general(Env0, Expr, Line, Cs0, R)
     end;
+
+build(Env0, Expr, [#op1_ctxt{line=Line, op=Op}|R]) ->
+    build(Env0, {op,Line,Op,Expr}, R);
 build(Env0, Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
     %% This is a lone match at the end of a block.
     Match = {match,Line,P,Expr},
@@ -299,8 +326,28 @@ plug(Expr, [#cons_ctxt{line=Line, tail=T}|R]) ->
     plug({cons,Line,Expr,T}, R);
 plug(Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
     plug({match,Line,Expr,P}, R);
+%% plug(Expr, [#op_ctxt{line=Line, op=Op}|R]) ->
+%%     plug({op,Line,Op,Expr}, R);
 plug(Expr, []) ->
     Expr.
+
+%% Constant folding.
+apply_op(L, '+', {integer,_,I1}, {integer,_,I2}) ->
+    {ok,{integer,L,I1+I2}};
+apply_op(L, '-', {integer,_,I1}, {integer,_,I2}) ->
+    {ok,{integer,L,I1-I2}};
+apply_op(L, '*', {integer,_,I1}, {integer,_,I2}) ->
+    {ok,{integer,L,I1*I2}};
+apply_op(L, '/', {integer,_,I1}, {integer,_,I2}) when I2 =/= 0 ->
+    {ok,{integer,L,I1/I2}};
+%% TODO: more operators
+apply_op(_,_,_,_) ->
+    false.
+
+apply_op(L, '-', {integer,_,I}) ->
+    {ok,{integer,L,-I}};
+apply_op(_,_,_) ->
+    false.
 
 %% EUnit tests.
 

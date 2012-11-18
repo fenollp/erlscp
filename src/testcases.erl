@@ -167,3 +167,15 @@ match_test() ->
             foo -> 1;
             bar -> 0
         end.
+
+infix_op_test() ->
+    1 = 2+2-3*1.
+
+prefix_op_test() ->
+    1 = -(2+2-5).
+
+div_test() ->
+    1 = trunc(1/case hd([foo]) of
+                    foo -> 1;
+                    bar -> 0
+                end).

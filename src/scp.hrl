@@ -22,7 +22,8 @@
               forms = []}).
 
 %% Contexts.
--record(op_ctxt, {line, op, e1}).           %op(e0, e1)
+-record(op_ctxt, {line, op, e1=hole, e2=hole}). %op(e1, e2)
+-record(op1_ctxt, {line, op}).              %op(<hole>)
 -record(call_ctxt, {line, args}).           %call(<hole>, args...)
 -record(case_ctxt, {line, clauses}).        %case <hole> of clauses...
 -record(cons_ctxt, {line, tail}).           %[<hole>|tail]
