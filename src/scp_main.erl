@@ -55,6 +55,9 @@ drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
         {ok,Fun} -> drive_call(Env0, E, L0, G, Arity, Fun, R);
         _ -> build(Env0, E, R)
     end;
+drive(Env0, E={'fun',Lf,{function,G,Arity}}, R=[#call_ctxt{args=Args}|_])
+  when length(Args) == Arity -> %R3
+    drive(Env0, {'atom',Lf,G}, R);
 %% TODO: R3 for 'fun' references in any context
 
 drive(Env0, E, R=[#case_ctxt{clauses=Cs0}|_])
@@ -82,6 +85,11 @@ drive(Env0, {'fun',Lf,{clauses,Cs0}}, [#call_ctxt{line=Lc,args=As}|R]) -> %R5
 drive(Env0, {'fun',Line,{clauses,Cs0}}, R) ->   %R6
     {Env,Cs} = drive_clauses(Env0, Cs0),
     build(Env, {'fun',Line,{clauses,Cs}}, R);
+
+
+drive(Env0, {'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, R) ->
+    %% TODO: Letrec.
+    1 = 2;
 
 drive(Env0, E={'block',Lb,[{'match',Lm,P0,E0},Rest]}, R) ->
     drive(Env0, scp_expr:make_case(Lb, E0, [{clause,Lm,[P0],[],[Rest]}]), R);
@@ -220,17 +228,10 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
     case Renaming of
         {ok,Fname} ->
             io:fwrite("Folding. Fname=~p, FV=~p~n",[Fname,FV]),
-            case FV of
-                %% [] ->
-                %%     %% TODO: test this case
-                %%     Expr={'fun',Line,{function,Fname,length(FV)}};
-                _ ->
-                    Expr={'call',Line,{atom,Line,Fname},[{var,Line,X} || X <- FV]}
-            end,
-            {Env0,Expr};
+            Expr={'call',Line,{atom,Line,Fname},[{var,Line,X} || X <- FV]},
+            {Env0#env{found=[Fname|Env0#env.found]},Expr};
         _ ->
             %% Neither a renaming nor an embedding.
-            %%{Env1,Fname} = scp_expr:gensym(Env0,"h"),
             {Env1,Fname} = scp_expr:gensym(Env0, Env0#env.name),
             {Env2,Fun} = scp_expr:alpha_convert(Env1, Fun0),
             %% Remember that Fname came from the expression L.
@@ -242,11 +243,11 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
             io:fwrite("After driving the fun: ~p~n", [E]),
             {Env5,S} = scp_expr:fresh_variables(Env4, dict:new(), FV),
             %% The line numbers are probably going to be a bit wrong.
-            case FV of
-                %% [] ->
-                %%     %% TODO: test this case
-                %%     NewFun0 = E,
-                %%     NewTerm = {'fun',Line,{function,Fname,length(FV)}};
+            case lists:member(Fname, Env5#env.found) of
+                false ->
+                    %% Fname was never used in E, so there is no need
+                    %% to residualize a new function.
+                    {Env5,E};
                 _ ->
                     Head = [scp_expr:subst(S, {var,Line,X}) || X <- FV],
                     %% io:fwrite("S: ~p~n", [S]),
@@ -259,15 +260,15 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
                                {clauses,
                                 [{clause,Line,Head,Guard,[Body]}]}},
                     NewTerm = {'call',Line,{atom,Line,Fname},
-                               [{var,Line,X} || X <- FV]}
-            end,
-            io:fwrite("NewFun0: ~p~n",[NewFun0]),
-            io:fwrite("NewTerm: ~p~n",[NewTerm]),
-            {Env6,NewFun} = scp_expr:alpha_convert(Env5, NewFun0),
-            io:fwrite("NewFun: ~p~n",[NewFun]),
-            %% This letrec will become a top-level function later.
-            Letrec = scp_expr:make_letrec(Line,[{Fname,length(FV),NewFun}],[NewTerm]),
-            {Env6,Letrec}
+                               [{var,Line,X} || X <- FV]},
+                    io:fwrite("NewFun0: ~p~n",[NewFun0]),
+                    io:fwrite("NewTerm: ~p~n",[NewTerm]),
+                    {Env6,NewFun} = scp_expr:alpha_convert(Env5, NewFun0),
+                    io:fwrite("NewFun: ~p~n",[NewFun]),
+                    %% This letrec will become a top-level function later.
+                    Letrec = scp_expr:make_letrec(Line,[{Fname,length(FV),NewFun}],[NewTerm]),
+                    {Env6,Letrec}
+            end
     end.
 
 
@@ -288,7 +289,7 @@ drive_const_case(Env0, E, Ctxt=[CR=#case_ctxt{clauses=Cs0}|R]) ->
             build(Env0, E, [CR#case_ctxt{clauses=Cs}|R])
     end.
 
-drive_constructor_case(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0}|R]) ->
+drive_constructor_case(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0, line=Line}|R]) ->
     case scp_pattern:simplify(Env0#env.bound, E0, Cs0) of
         {_,_,[]} ->
             %% All the clauses disappeared. Preserve the error in the
@@ -300,7 +301,8 @@ drive_constructor_case(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0}|R]) ->
                 Cs0 ->
                     %% The expression didn't change and neither did
                     %% the clauses.
-                    build(Env0, E0, [CR#case_ctxt{clauses=Cs}|R]);
+                    {Env1,E1} = drive(Env0, E0, []),
+                    build(Env1, E1, [CR#case_ctxt{clauses=Cs}|R]);
                 _ ->
                     %% The expression didn't change, but some clause
                     %% may have been removed.
@@ -310,14 +312,60 @@ drive_constructor_case(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0}|R]) ->
             %% A new expression, so driving might improve it further.
             Cs = [C || {C,nothing} <- SCs],
             drive(Env0, E, [CR#case_ctxt{clauses=Cs}|R]);
-        %% {E,Rhs,SCs} ->
-        %%     %% An expression was removed from the constructor.
-        %% ;
+        {E,Rhs0,SCs} ->
+            %% An expression was removed from the constructor.
+            io:fwrite("Stuff happens: E=~p~n Rhs0=~p~n SCs=~p~n", [E,Rhs0,SCs]),
+            Cs1 = rebuild_clauses(Env0, Rhs0, SCs),
+            case lists:member(false, Cs1) of
+                %% true ->
+                %%     %% It wasn't possible to simply substitute the Lhs
+                %%     %% in every clause. Bind Rhs0 to a new variable
+                %%     %% and do the substitution with that instead. This
+                %%     %% is equivalent to the second case in R9.
+
+                %%     %% TODO: check that this works. Also check if it
+                %%     %% would work better to make the block and then do
+                %%     %% driving on that instead.
+                %%     io:fwrite("Stuff happening~n"),
+                %%     {Env1,Rhs} = drive(Env0, Rhs0, []),
+                %%     {Env2,Var} = scp_expr:gensym(Env1, "P"),
+                %%     Cs2 = rebuild_clauses(Env2, {var,Line,Var}, SCs),
+                %%     Match = {match,Line,{var,Line,Var},Rhs},
+                %%     Env = extend_bound(Env2, sets:from_list([Var])),
+                %%     Case = drive(Env, E, [CR#case_ctxt{clauses=Cs2}|R]),
+                %%     NewE = scp_expr:make_block(Match, Case),
+                %%     io:fwrite("Stuff happened: NewE=~p~n", [NewE]),
+                %%     NewE;
+                false ->
+                    %% Lhs in each clause was substituted for Rhs.
+                    io:fwrite("Stuff was easy. Cs1=~p~n",[Cs1]),
+                    drive(Env0, E, [CR#case_ctxt{clauses=Cs1}|R])
+            end;
+            %%build(Env0, E0, Ctxt);
         Foo ->
             %% Something more clever happened.
             io:fwrite("constructor case default: E=~p~n Ctxt=~p~n Foo=~p~n", [E0,Ctxt,Foo]),
             build(Env0, E0, Ctxt)
     end.
+
+
+rebuild_clauses(Env, Rhs, [{C0,nothing}|SCs]) ->
+    [C0|rebuild_clauses(Env, Rhs, SCs)];
+rebuild_clauses(Env, Rhs, [{C0,Lhs}|SCs]) ->
+    {clause,L,P,G,B0} = C0,
+    case scp_expr:terminates(Env, Rhs)
+        orelse (scp_expr:is_linear(Lhs, B0)
+                andalso scp_expr:is_strict(Lhs, B0)) of
+        true ->
+            S = dict:from_list([{Lhs,Rhs}]),
+            B = [scp_expr:subst(S, X) || X <- B0],
+            C = {clause,L,P,G,B},
+            [C|rebuild_clauses(Env, Rhs, SCs)];
+        _ ->
+            false
+    end;
+rebuild_clauses(_, _, []) ->
+    [].
 
 %% Plug an expression into a context.
 plug(Expr, [#call_ctxt{line=Line, args=Args}|R]) ->

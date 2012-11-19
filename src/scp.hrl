@@ -4,7 +4,8 @@
 -endif.
 
 %% Environments.
--record(env, {used = [],                        %passed upwards
+-record(env, {found = [],
+              w = [],
               ls = [],
               memo = [],
               split_vars = [],

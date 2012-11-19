@@ -32,68 +32,6 @@
 -define(LET(L,R,B), ((fun(L) -> (B) end) (R))).
 -endif.
 
-%% bar_test() ->
-%%     1,
-%%     fun (X) ->
-%% 	    begin X + 1, X + 3 end,
-%% 	    X
-%%     end.
-
-%% apt({Xs,Ys}) ->
-%%     case {Xs,Ys} of
-%%         {[]} -> Ys;
-%%         {[X|Xs]} -> [X|apt({Xs,Ys})]
-%%     end.
-
-%% ap(Xs,Ys) ->
-%%     case Xs of
-%%         [] -> Ys;
-%%         [X|Xs] -> [X|ap(Xs,Ys)]
-%%     end.
-
-
-%% foo2(X,X)->X.
-%% foo2() ->
-%%     (X=1)+(X=1).
-
-%% cases(X) ->
-%%     case X of
-%%         [A|B] -> ok;
-%%         _ -> B = X
-%%     end,
-%%     B.
-
-%% lists:append(X=[1,2],X=[3,4]),
-
-
-ap([],Ys) -> Ys;
-ap([X|Xs],Ys) -> [X|ap(Xs,Ys)].
-
-ap3(Xs,Ys,Zs) ->
-    ap(ap(Xs,Ys),Zs).
-
-%% These like these should be made with quickcheck and should be in a
-%% different module so that they are not supercompiled.
-%% ap3_test() ->
-%%     X = [1,2,3],
-%%     Y = [a,b,c],
-%%     Z = [9,8,7],
-%%     Ap3 = ap3(X,Y,Z),
-%%     Ap3 = ap(ap(X,Y),Z),
-%%     Ap3 = ap(X,ap(Y,Z)),
-%%     Ap3 = X++ap(Y,Z),
-%%     Ap3 = X++Y++Z.
-
-sum([]) -> 0;
-sum([X|Xs]) -> X + sum(Xs).
-
-square(X) -> X * X.
-
-map(_,[]) -> [];
-map(Fun,[X|Xs]) -> [Fun(X)|map(Fun,Xs)].
-
-sumsqs(Xs) ->
-    sum(map(fun square/1, Xs)).
 
 atom_test() ->
     1 = case false of
@@ -182,3 +120,66 @@ div_test() ->
 
 tuple_test() ->
     1=element(1,{tuple_case_test(),1+1,1+1+1}).
+
+%% bar_test() ->
+%%     1,
+%%     fun (X) ->
+%% 	    begin X + 1, X + 3 end,
+%% 	    X
+%%     end.
+
+%% apt({Xs,Ys}) ->
+%%     case {Xs,Ys} of
+%%         {[]} -> Ys;
+%%         {[X|Xs]} -> [X|apt({Xs,Ys})]
+%%     end.
+
+%% ap(Xs,Ys) ->
+%%     case Xs of
+%%         [] -> Ys;
+%%         [X|Xs] -> [X|ap(Xs,Ys)]
+%%     end.
+
+
+%% foo2(X,X)->X.
+%% foo2() ->
+%%     (X=1)+(X=1).
+
+%% cases(X) ->
+%%     case X of
+%%         [A|B] -> ok;
+%%         _ -> B = X
+%%     end,
+%%     B.
+
+%% lists:append(X=[1,2],X=[3,4]),
+
+
+ap([],Ys) -> Ys;
+ap([X|Xs],Ys) -> [X|ap(Xs,Ys)].
+
+ap3(Xs,Ys,Zs) ->
+    ap(ap(Xs,Ys),Zs).
+
+%% These like these should be made with quickcheck and should be in a
+%% different module so that they are not supercompiled.
+%% ap3_test() ->
+%%     X = [1,2,3],
+%%     Y = [a,b,c],
+%%     Z = [9,8,7],
+%%     Ap3 = ap3(X,Y,Z),
+%%     Ap3 = ap(ap(X,Y),Z),
+%%     Ap3 = ap(X,ap(Y,Z)),
+%%     Ap3 = X++ap(Y,Z),
+%%     Ap3 = X++Y++Z.
+
+sum([]) -> 0;
+sum([X|Xs]) -> X + sum(Xs).
+
+square(X) -> X * X.
+
+map(_,[]) -> [];
+map(Fun,[X|Xs]) -> [Fun(X)|map(Fun,Xs)].
+
+sumsqs(Xs) ->
+    sum(map(fun square/1, Xs)).

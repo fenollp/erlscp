@@ -48,6 +48,9 @@ pattern_variables(Expr) ->
 %%     length(Vars) == gb_sets:size(Uniq) andalso
 %%         scp_expr:matches(P) == [].
 
+guard_variables(G) ->
+    erl_syntax_lib:variables({clause,1,[],G,[{nil,1}]}).
+
 %% Go over the list of clauses left to right and return the clauses
 %% that could match the constant E. Each clause is the tuple
 %% {Taken,Clause}, where Taken==yes if it's certain that the clause
@@ -88,13 +91,14 @@ simplify(Bs, E0, Cs0) ->
     io:fwrite("simplify E0=~p~n Cs0=~p~n",[E0,Cs0]),
     {E1,Cs1} = trivial(E0, Cs0),
     io:fwrite("trivial E1=~p~n Cs1=~p~n",[E1,Cs1]),
-    Cs = impossible(Bs, E1, Cs1),
-    io:fwrite("impossible ~n Cs=~p~n",[Cs]),
-    %% TODO: extract a common field
-    E = E1,
-    {E,nothing,[{C,nothing} || C <- Cs]}.
+    Cs2 = impossible(Bs, E1, Cs1),
+    io:fwrite("impossible ~n Cs=~p~n",[Cs2]),
+    {E3,Rhs,SCs} = common(Bs, E1, Cs2),
+    io:fwrite("common E=~p ~n SCs=~p~n",[E3,SCs]),
+    {E3,Rhs,SCs}.
 
 
+%% TODO: couldn't common/3 remove these?
 trivial(E0={tuple,_,[A]}, Cs0) ->
     %% Do not construct a tuple if it can be avoided.
     AllOne = lists:all(fun ({clause,_,[P],G,B}) ->
@@ -181,6 +185,126 @@ imp_cons(Bs, E, C={clause,_,_,Guard,_}, Cs) ->
         _ -> [C|impossible(Bs, E, Cs)]
     end.
 
+%% Common field elimination. Returns {E',Rhs,SCs}. E' is a new
+%% scrutinee for the case expression. Rhs is an expression extracted
+%% from E. SCs is a list of {Clause',Lhs}, where Clause' is a new case
+%% clause and Lhs should be substituted for Rhs in the body.
+common(Bs, E0, Cs) ->
+    %%common(Bs, E0, Cs, [[]|paths(E0)]).
+    common(Bs, E0, Cs, [[],[1],[2]]).
+
+common(Bs, E0, Cs, [Path|Ps]) ->
+    case common_try(Bs, Path, E0, Cs) of
+        X={E,Rhs,SCs} ->
+            X;
+        _ ->
+            common(Bs, E0, Cs, Ps)
+    end;
+common(_, E0, Cs, []) ->
+    common_default(E0, Cs).
+
+common_try(Bs, Path, E0, Cs) ->
+    case path_ref(Path, E0) of
+        {ok,Rhs} ->
+            io:fwrite("Rhs: ~p~n",[Rhs]),
+            SCs = [reconcile(Bs, Path, Rhs, C) || C <- Cs],
+            case lists:member(false,[Rhs|SCs]) of
+                true ->
+                    %% No improvements on this path.
+                    io:fwrite("Fail. SCs: ~p~n",[SCs]),
+                    false;
+                _ ->
+                    io:fwrite("Success. Rhs: ~p, SCs: ~p~n",[Rhs,SCs]),
+                    E = path_elim(Path, E0),
+                    io:fwrite("E: ~p~n",[E]),
+                    {E,Rhs,SCs}
+                    %%{E0,nothing,[{C,nothing} || C <- Cs]}
+            end;
+        _ ->
+            false
+    end.
+
+common_default(E0, Cs) ->
+    {E0,nothing,[{C,nothing} || C <- Cs]}.
+
+reconcile(Bs, Path, Rhs, {clause,L,[P0],G,B}) ->
+    PExpr = path_ref(Path, P0),
+    io:fwrite("PExpr: ~p~n",[PExpr]),
+    case [Rhs|PExpr] of
+        [_|{ok,{var,_,'_'}}] ->
+            %% This part of the pattern doesn't matter.
+            P = path_elim(Path, P0),
+            {{clause,L,[P],G,B},nothing};
+        [{var,_,N}|{ok,{var,_,N}}] ->
+            %% The same variable in both Rhs and the pattern. Just
+            %% eliminate it.
+            P = path_elim(Path, P0),
+            {{clause,L,[P],G,B},nothing};
+        [_|{ok,{var,_,N}}] ->
+            case sets:is_element(N, Bs) of
+                true ->
+                    %% This part of the pattern is a bound variable.
+                    %% Can't know if it matches Rhs or not.
+                    false;
+                _ ->
+                    case sets:is_element(N, guard_variables(G)) of
+                        true ->
+                            %% The variable is used in the guard.
+                            %% TODO: see if the variable can be
+                            %% replaced with Rhs in the guard
+                            false;
+                        _ ->
+                            %% The variable can be replaced with Rhs.
+                            P = path_elim(Path, P0),
+                            {{clause,L,[P],G,B},N}
+                    end
+            end;
+        %% TODO: more reconcilable stuff. It could also detect things
+        %% that can't possibly match.
+        _ ->
+            %% There was no way to reconcile Rhs and PExpr.
+            io:fwrite("Irreconcilable: ~p and ~p~n",[Rhs,PExpr]),
+            false
+    end.
+
+%% Find paths to all elements in an expression.
+paths({cons,_,H,T}) ->
+    [[1],[2]] ++
+        [[1|P] || P <- paths(H)] ++
+        [[2|P] || P <- paths(T)];
+%% paths({tuple,_,As}) ->
+%%     ;
+paths(_) ->
+    [].
+
+%% Walk a path over an expression, if possible.
+path_ref([], X) -> {ok,X};
+path_ref([1|Is], {cons,_,X,_}) -> path_ref(Is, X);
+path_ref([2|Is], {cons,_,_,X}) -> path_ref(Is, X);
+path_ref([N|Is], {tuple,_,As}) when N =< length(As) ->
+    path_ref(Is, lists:nth(N,As));
+path_ref(X,Y) ->
+    false.
+
+%% Remove the element referenced by the path. Must be able to handle
+%% anything that path_ref handles.
+path_elim([1], {cons,_,_,T}) -> T;
+path_elim([1|Is], {cons,L,H,T}) -> {cons,L,path_elim(Is, H),T};
+path_elim([2], {cons,_,H,_}) -> H;
+path_elim([2|Is], {cons,L,H,T}) -> {cons,L,H,path_elim(Is, T)};
+path_elim([N], {tuple,L,As0}) when N =< length(As0) ->
+    As = lists:sublist(As0,1,N-1) ++
+        lists:sublist(As0,N+1,length(As0)),
+    {tuple,L,As};
+path_elim([N|Is], {tuple,L,As0}) when N =< length(As0) ->
+    As = lists:sublist(As0,1,N-1) ++
+        path_elim(Is,lists:nth(N,As0)) ++
+        lists:sublist(As0,N+1,length(As0)),
+    {tuple,L,As};
+path_elim([], _) ->
+    %% This will be eliminated by find_matching_const/3
+    {nil,1}.
+
 %% EUnit tests.
 
 pv_test() ->
@@ -194,3 +318,46 @@ impossible_test() ->
            {clause,1,[{atom,1,foo}],[],[{integer,1,1}]}],
     Cs = impossible(sets:new(), E, Cs0),
     Cs = Cs0.
+
+path_ref_test() ->
+    E = scp_expr:read("[{the},{great,quux}]"),
+    {ok,{atom,_,the}} = path_ref([1,1], E),
+    {ok,{atom,_,great}} = path_ref([2,1,1], E),
+    {ok,{atom,_,quux}} = path_ref([2,1,2], E).
+
+path_elim_test() ->
+    ABCD = scp_expr:read("[{a,b},{c,d}]"),
+    BCD = scp_expr:read("[{b},{c,d}]"),
+    CD = scp_expr:read("[{c,d}]"),
+    CD = path_elim([1], ABCD),
+    AB = scp_expr:read("{a,b}"),
+    AB = path_elim([2], ABCD),
+    ACD = scp_expr:read("[{a},{c,d}]"),
+    ACD = path_elim([1,2], ABCD),
+    ABD = scp_expr:read("[{a,b},{d}]"),
+    ABD = path_elim([2,1,1], ABCD),
+    ABC = scp_expr:read("[{a,b},{c}]"),
+    ABC = path_elim([2,1,2], ABCD),
+    {nil,_} = path_elim([], ABCD),
+    {ok,ABCD} = path_ref([], ABCD).
+
+paths_test() ->
+    E = scp_expr:read("[{the},{great,quux}]"),
+    Paths = paths(E),
+    Values = [path_ref(P,E) || P <- Paths],
+    Elims = [path_elim(P,E) || P <- Paths],
+    io:fwrite("Values: ~p~n", [Values]),
+    io:fwrite("Elims: ~p~n", [Elims]),
+    io:fwrite("Paths: ~p~n",[Paths]).
+
+common_test() ->
+    {'case',_,E0,Cs} = scp_expr:read("case {X,Y} of {_,[]} -> 1; {X1,[X2|X3]} -> 2 end"),
+    {E,Rhs,SCs} = common(sets:new(), E0, Cs),
+    io:fwrite("E: ~p~nRhs: ~p~nSCs: ~p~n", [E,Rhs,SCs]),
+    true = Rhs =/= nothing.
+
+reconcile_test() ->
+    P = {tuple,1,[{var,1,'_'}]},
+    C0 = {clause,1,[P],[],[{nil,1}]},
+    {C,nothing} = reconcile(sets:new(), [1], {var,1,'X'}, C0),
+    io:fwrite("C: ~p~n",[C]).

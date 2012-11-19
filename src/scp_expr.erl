@@ -4,7 +4,8 @@
 %% @doc Miscellaneous tools for working with Erlang expressions.
 
 -module(scp_expr).
--export([list_to_block/2, make_block/3,
+-export([read/1,
+         list_to_block/2, make_block/3,
          make_case/3,
          function_to_fun/1, fun_to_function/3,
          simplify/1,
@@ -13,8 +14,15 @@
          fresh_variables/3, gensym/2,
          alpha_convert/2,
          make_letrec/3, extract_letrecs/1,
-         find_renaming/2]).
+         find_renaming/2,
+         terminates/2, is_linear/2, is_strict/2]).
 -include("scp.hrl").
+
+read(S) ->
+    %% Too useful to not have around...
+    {ok, Tokens, _} = erl_scan:string("x()->"++S++"."),
+    {ok, {function,_,_,_,[{clause,L,[],[],B}]}} = erl_parse:parse_form(Tokens),
+    list_to_block(L,B).
 
 %% Convert a list of expressions (such as in a function body) into
 %% nested blocks.
@@ -408,6 +416,10 @@ find_var_subst(B, [{{atom,_,V},{atom,_,V}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{string,_,V},{string,_,V}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{char,_,V},{char,_,V}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{nil,_},{nil,_}}|T]) -> find_var_subst(B, T);
+find_var_subst(B, [{{'fun',_,{function,F,A}},{'fun',_,{function,F,A}}}|T])  ->
+    find_var_subst(B, T);
+find_var_subst(B, [{{'fun',_,{function,M,F,A}},{'fun',_,{function,M,F,A}}}|T])  ->
+    find_var_subst(B, T);
 find_var_subst(B, [{{var,_,N},{var,_,N}}|T]) ->
     %% The same variable in both expressions. No need for a
     %% substitution.
@@ -491,7 +503,7 @@ find_var_subst(B, [{E1,E2}|T]) ->
             case lists:member(T1,
                               [integer,float,atom,string,char,nil,
                                variable,underscore,application,case_expr,
-                               list,infix_expr,prefix_expr]) of
+                               list,infix_expr,prefix_expr,tuple]) of
                 true -> true
             end,
             false;
@@ -515,14 +527,34 @@ unzip_clauses(Cs) ->
     lists:unzip3(lists:map(fun ({clause,_,P,G,B}) -> {P,G,B} end,
                            Cs)).
 
-%% TODO: Linearity and strictness.
+%% Always terminates and is free of side-effects.
+terminates(Env, {var,_,N}) ->
+    %% If a variable is in split_vars it could represent any kind of
+    %% expression whatsoever. This would represent the guard in R8.
+    not lists:member(N, Env#env.split_vars);
+terminates(Env, {var,_,_}) -> true;
+terminates(Env, {integer,_,_}) -> true;
+terminates(Env, {float,_,_}) -> true;
+terminates(Env, {atom,_,_}) -> true;
+terminates(Env, {string,_,_}) -> true;
+terminates(Env, {char,_,_}) -> true;
+terminates(Env, {nil,_}) -> true;
+terminates(Env, {'fun',_,_}) -> true;
+%% TODO: make this stronger
+terminates(Env, _) -> false.
+
+%% Linearity and strictness.
+
+is_linear(Var, E) ->
+    %% TODO
+    true.
+
+is_strict(Var, E) ->
+    %% TODO
+    true.
 
 %% EUnit tests.
 
-read(S) ->
-    {ok, Tokens, _} = erl_scan:string("x()->"++S++"."),
-    {ok, {function,_,_,_,[{clause,L,[],[],B}]}} = erl_parse:parse_form(Tokens),
-    list_to_block(L,B).
 
 fv0_test() ->
     ['Y'] = free_variables({match,1,{var,1,'X'},{var,1,'Y'}}).
