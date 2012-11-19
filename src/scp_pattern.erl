@@ -236,8 +236,8 @@ reconcile(Bs, Path, Rhs, {clause,L,[P0],G,B}) ->
             P = path_elim(Path, P0),
             {{clause,L,[P],G,B},nothing};
         [{var,_,N}|{ok,{var,_,N}}] ->
-            %% The same variable in both Rhs and the pattern. Just
-            %% eliminate it.
+            %% The same variable in both Rhs and the pattern. It's
+            %% already bound, just eliminate it.
             P = path_elim(Path, P0),
             {{clause,L,[P],G,B},nothing};
         [_|{ok,{var,_,N}}] ->
@@ -247,15 +247,16 @@ reconcile(Bs, Path, Rhs, {clause,L,[P0],G,B}) ->
                     %% Can't know if it matches Rhs or not.
                     false;
                 _ ->
-                    case sets:is_element(N, guard_variables(G)) of
+                    P = path_elim(Path, P0),
+                    case sets:is_element(N, sets:union(guard_variables(G),
+                                                       erl_syntax_lib:variables(P))) of
                         true ->
-                            %% The variable is used in the guard.
-                            %% TODO: see if the variable can be
-                            %% replaced with Rhs in the guard
+                            %% The variable is used in the guard or
+                            %% was used twice in P0. TODO: see if the
+                            %% variable can be replaced with Rhs.
                             false;
                         _ ->
                             %% The variable can be replaced with Rhs.
-                            P = path_elim(Path, P0),
                             {{clause,L,[P],G,B},N}
                     end
             end;
