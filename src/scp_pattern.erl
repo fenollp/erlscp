@@ -55,7 +55,7 @@ guard_variables(G) ->
 %% that could match the constant E. Each clause is the tuple
 %% {Taken,Clause}, where Taken==yes if it's certain that the clause
 %% will be taken. Only works with constant expressions (including the
-%% empty tuple) and patterns that are constants.
+%% empty tuple) and patterns that are constants or a single variable.
 find_matching_const(Bs, E, Cs0) ->
     %%io:fwrite("find_matching_const(~p, ~p)~n => ~p~n",[E,Cs,fmcc(E, Cs)]),
     Cs = impossible(Bs, E, Cs0),                %also handles variables
@@ -64,6 +64,7 @@ find_matching_const(Bs, E, Cs0) ->
 fmcc(E={T,_,V}, [C={clause,_,[{T,_,V}],_,_}|Cs]) -> fmcc_cons(E, {yes,C}, Cs);
 fmcc(E={T,_,_}, [C={clause,_,[{T,_,_}],_,_}|Cs]) -> fmcc(E, Cs);
 fmcc(E={nil,_}, [C={clause,_,[{nil,_}],_,_}|Cs]) -> fmcc_cons(E, {yes,C}, Cs);
+fmcc(E, [C={clause,_,[{var,_,_}],_,_}|Cs]) -> [{yes,C}|fmcc(E, Cs)];
 fmcc(E, [C|Cs]) -> [{maybe,C}|fmcc(E, Cs)];
 fmcc(_, []) -> [].
 %%fmcc_cons(E, C={Taken,{clause,_,_,[],_}}, Cs) -> [C];

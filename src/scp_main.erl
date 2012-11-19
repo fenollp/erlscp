@@ -72,8 +72,6 @@ drive(Env0, {'fun',Lf,{clauses,Cs0}}, [#call_ctxt{line=Lc,args=As}|R]) -> %R5
     %%    (fun (X,Y) -> X) (1,2).
     %% => case {1,2} of {X,Y} -> X end.
     %% FIXME: check that the arity matches
-    %% XXX: it might be better to treat this as a let, i.e. bite off
-    %% one argument at a time, unless there are repeated variables...
     E = {tuple,Lc,As},
     Cs = lists:map(fun ({clause,Line,H0,G0,B0}) ->
                            {clause,Line,[{tuple,Line,H0}],G0,B0}
@@ -86,6 +84,8 @@ drive(Env0, {'fun',Line,{clauses,Cs0}}, R) ->   %R6
     {Env,Cs} = drive_clauses(Env0, Cs0),
     build(Env, {'fun',Line,{clauses,Cs}}, R);
 
+drive(Env0, E={var,_,Rhs}, R=[#case_ctxt{}|_]) -> %R8
+    drive_constructor_case(Env0, E, R);
 
 drive(Env0, {'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, R) ->
     %% TODO: Letrec.
@@ -145,6 +145,7 @@ build(Env0, Expr, [#cons_ctxt{line=Line, tail=T0}|R]) ->  %R15 for cons
     %% The intuition here is that the head of the cons has been driven
     %% (c.f. R11) and now it's time to drive the tail and build a
     %% residual cons expression.
+    %% TODO: maybe it's better to have this work like tuple and call
     {Env1,T1} = drive(Env0, T0, []),
     build(Env1, {cons,Line,Expr,T1}, R);
 
@@ -157,15 +158,10 @@ build(Env0, Expr, [#op_ctxt{line=Line, op=Op, e1=E1, e2=hole}|R]) ->        %R16
 build(Env0, Expr, [#call_ctxt{line=Line, args=Args0}|R]) -> %R17
     {Env,Args} = drive_list(Env0, fun drive/3, Args0),
     build(Env, {call,Line,Expr,Args}, R);
-build(Env0, Expr, [#case_ctxt{line=Line, clauses=Cs0}|R]) ->
-    %% This is where positive information can get propagated.
-    case Expr of
-        %% TODO: this part must be stronger
-        %%{var,Lv,V} -> ;
-        _ ->                                    %R19
-            build_case_general(Env0, Expr, Line, Cs0, R)
-    end;
-
+%% build(Env0, Expr={var,_,_}, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R18
+%%     drive_case_variable(Env0, Expr, Line, Cs0, R);
+build(Env0, Expr, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R19
+    build_case_general(Env0, Expr, Line, Cs0, R);
 build(Env0, Expr, [#op1_ctxt{line=Line, op=Op}|R]) ->
     build(Env0, {op,Line,Op,Expr}, R);
 build(Env0, Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
@@ -176,11 +172,29 @@ build(Env0, Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
 build(Env, Expr, []) ->                         %R20
     {Env, Expr}.
 
+%% TODO:
+%% build_case_variable(Env0, {var,Lc,V}, Line, Cs0, R) ->
+%%     %% Drive every clause body in the R context, substituting in V
+%%     %% where possible.
+%%     {Cs1,Env1} = lists:mapfoldr(
+%%                    fun ({clause,Lc,H0,G0,B0},Env00) ->
+%%                            Vars = head_variables(H0),
+%%                            Env01 = extend_bound(Env00, Vars),
+%%                            B1 = scp_expr:list_to_block(Lc, B0),
+%%                            {Env02,B} = drive(Env01, B1, R),
+%%                            Env03 = Env02#env{bound=Env00#env.bound},
+%%                            {{clause,Lc,H0,G0,[B]},Env03}
+%%                    end,
+%%                    Env0, Cs0),
+%%     %% FIXME: find the new bindings going out of the case
+%%     Case = scp_expr:make_case(Line, Expr, Cs1),
+%%     {Env1, Case}.
+
 build_case_general(Env0, Expr, Line, Cs0, R) ->
     %% Drive every clause body in the R context.
     {Cs1,Env1} = lists:mapfoldr(
                    fun ({clause,Lc,H0,G0,B0},Env00) ->
-                           %% TODO: drive guards?
+                           %% TODO: what about guards?
                            Vars = head_variables(H0),
                            Env01 = extend_bound(Env00, Vars),
                            B1 = scp_expr:list_to_block(Lc, B0),
@@ -189,7 +203,7 @@ build_case_general(Env0, Expr, Line, Cs0, R) ->
                            {{clause,Lc,H0,G0,[B]},Env03}
                    end,
                    Env0, Cs0),
-    %% TODO: find the new bindings going out of the case
+    %% FIXME: find the new bindings going out of the case
     Case = scp_expr:make_case(Line, Expr, Cs1),
     {Env1, Case}.
 
@@ -276,6 +290,10 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
 drive_const_case(Env0, E, Ctxt=[CR=#case_ctxt{clauses=Cs0}|R]) ->
     %% E is a constant.
     case scp_pattern:find_matching_const(Env0#env.bound, E, Cs0) of
+        [{yes,{clause,L,[{var,_,V}],[],B}}] ->   %R7
+            %% The case just binds a variable to a constant.
+            S = dict:from_list([{V,E}]),
+            drive(Env0, scp_expr:subst(S, scp_expr:list_to_block(L, B)), R);
         [{yes,{clause,L,P,[],B}}] ->
             drive(Env0, scp_expr:list_to_block(L, B), R);
         [] ->
