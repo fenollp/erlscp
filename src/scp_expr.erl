@@ -217,6 +217,9 @@ ac(Env0,S0,{tuple,L,Es0}) ->
     {Env,S,Es} = ac_list(Env0,S0,Es0),
     {Env,S,{tuple,L,Es}};
 
+ac(Env0,S0,{remote,L,M0,F0}) ->
+    {Env,S,[M,F]} = ac_list(Env0,S0,[M0,F0]),
+    {Env,S,{remote,L,M,F}};
 ac(Env0,S0,{'fun',L,{clauses,Cs0}}) ->
     {Env,S,Cs} = ac_fun_clauses(Env0,S0,Cs0),
     {Env,S,{'fun',L,{clauses,Cs}}};
@@ -230,8 +233,14 @@ ac(Env0,S0,{'fun',L,{function,M0,F0,A0}}) ->
 
 ac(Env0,S0,{'case',L,E0,Cs0}) ->
     {Env1,S1,E} = ac(Env0, S0, E0),
-    {Env,S,Cs} = ac_icr_clauses(Env0, S0, Cs0, 'case'),
+    {Env,S,Cs} = ac_icr_clauses(Env1, S1, Cs0, 'case'),
     {Env,S,{'case',L,E,Cs}};
+
+ac(Env0,S0,{'if',L,Cs0}) ->
+    %% Like a case, except there are no patterns and no scrutinee.
+    %% Only the bodies can introduce new variables.
+    {Env,S,Cs} = ac_icr_clauses(Env0, S0, Cs0, 'if'),
+    {Env,S,{'if',L,Cs}};
 
 ac(Env0,S0,{match,L,P0,E0}) ->
     %% An unbound variable defined in P0 may already have been seen in
@@ -301,18 +310,25 @@ ac_head(Env0,S0,[P0|Ps0]) ->
 ac_head(Env0,S0,[]) ->
     {Env0,S0,[]}.
 
-ac_guard(Env0,S0,[]) ->
-    %% XXX: probably can't change Env and S?
-    %% TODO:
-    {Env0,S0,[]}.
+ac_guard(Env0,S0,G0) ->
+    %% Guards are lists of lists of guard expressions. These
+    %% expressions can't introduce new names.
+    G = lists:map(fun (Gexprs) ->
+                          lists:map(fun (Gexpr) ->
+                                            subst(S0, Gexpr)
+                                    end,
+                                    Gexprs)
+                  end,
+                  G0),
+    {Env0,S0,G}.
 
-ac_icr_clauses(Env0,S0,[{clause,L,[P0],G0,B0}|Cs0],ExprType) ->
-    Vars0 = sets:from_list(scp_pattern:pattern_variables(P0)),
+ac_icr_clauses(Env0,S0,[{clause,L,P0,G0,B0}|Cs0],ExprType) ->
+    Vars0 = sets:from_list(lists:flatmap(fun scp_pattern:pattern_variables/1, P0)),
     Vars1 = sets:subtract(Vars0, Env0#env.bound),
     Vars2 = sets:filter(fun (Name) -> not dict:is_key(Name,S0) end,
                         Vars1),
     {Env1,S1} = fresh_variables(Env0, S0, sets:to_list(Vars2)),
-    P = subst(S1, P0),
+    P = [ subst(S1, X) || X <- P0 ],
     %% The new variables are bound in the guard and in the body.
     {Env3,S3,G} = ac_guard(Env1#env{bound=sets:union(Env1#env.bound, Vars1)},
                            S1, G0),
@@ -334,7 +350,8 @@ ac_icr_clauses(Env0,S0,[{clause,L,[P0],G0,B0}|Cs0],ExprType) ->
             %% Variables that escape are those bound in all clauses.
             Env = Env5#env{bound = sets:union(Env4#env.bound, Env5#env.bound)}
     end,
-    {Env,S5,[{clause,L,[P],G,B}|Cs]};
+    {Env,S5,[{clause,L,P,G,B}|Cs]};
+
 ac_icr_clauses(Env0,S0,[],ExprType) ->
     {Env0,S0,[]}.
 
@@ -681,12 +698,43 @@ ac8_test() ->
 %% ac9_test() ->
 %%     %% TODO: because X is not used after the expression it would be
 %%     %% better if the two clauses were given different names for it,
-%%     %% but it might not really matter.
+%%     %% but it might not really matter. If it matters it is because
+%%     %% it adds an additional constraint on renamings.
 %%     E0 = read("case 1 of X -> X; X -> X end"),
 %%     check_ac(E0),
 %%     E = alpha_convert(#env{}, E0),
 %%     {'case',_,_,[Clause1,Clause2]} = E,
 %%     true = Clause1 =/= Clause2.
+
+ac10_test() ->
+    %% The case scrutinee introduces new variables and they are
+    %% visible after the case, so all occurences of X and Y here must
+    %% use the new names.
+    E0 = read("case X=Y=1 of X=1 -> Y; X=2 -> X+Y end, X+Y"),
+    {_,E1} = alpha_convert(#env{}, E0),
+    {block,1,
+     [{'case',1,
+       {match,1,{var,1,Xnew},{match,1,{var,1,Ynew},{integer,1,1}}},
+       [{clause,1,
+         [{match,1,{var,1,Xnew},{integer,1,1}}],[],[{var,1,Ynew}]},
+        {clause,1,
+         [{match,1,{var,1,Xnew},{integer,1,2}}],[],
+         [{op,1,'+',{var,1,Xnew},{var,1,Ynew}}]}]},
+      {op,1,'+',{var,1,Xnew},{var,1,Ynew}}]} = E1.
+
+ac11_test() ->
+    %% New variables in guards.
+    E0 = read("case X of Y when X==1,Y==1 -> X+Y end, X+Y"),
+    {_,E1} = alpha_convert(#env{}, E0),
+    {block,1,
+     [{'case',1,
+       {var,1,'X'},
+       [{clause,1,
+         [{var,1,Ynew}],
+         [[{op,1,'==',{var,1,'X'},{integer,1,1}},
+           {op,1,'==',{var,1,Ynew},{integer,1,1}}]],
+         [{op,1,'+',{var,1,'X'},{var,1,Ynew}}]}]},
+      {op,1,'+',{var,1,'X'},{var,1,Ynew}}]} = E1.
 
 vars_test() ->
     E0 = {op,48,'+',

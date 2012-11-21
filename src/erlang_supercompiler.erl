@@ -7,7 +7,7 @@ parse_transform(Forms, Options) ->
     Global = extract_functions(Forms),
     Fnames = lists:map(fun ({Name,_Arity}) -> Name end,
                        dict:fetch_keys(Global)),
-    Env0 = #env{forms = Forms,
+    Env0 = #env{%%forms = Forms,
 		global = Global,
                 seen_vars = sets:from_list(Fnames) },
     Ret = forms(Forms, Env0),
@@ -20,7 +20,7 @@ forms(Forms0, Env) ->
 
 form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
     %% TODO: what parts of the environment should be reset?
-    io:fwrite("~n~nLooking at function: ~w~n", [Name]),
+    io:fwrite("~n~nLooking at function: ~w/~w~n", [Name, Arity]),
     Expr0 = scp_expr:simplify(scp_expr:function_to_fun(F)),
     Seen = sets:union(Env0#env.seen_vars,
                       erl_syntax_lib:variables(Expr0)),
