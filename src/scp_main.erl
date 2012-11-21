@@ -49,7 +49,8 @@ drive(Env0, E1={T,_,_}, Ctxt=[#op1_ctxt{line=L, op=Op}|R])
     end;
 
 drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
-    %% This is a function call to a local function or a BIF.
+    %% This is a function call to a local function or a BIF. TODO:
+    %% handle BIFs
     Arity = length(Args),
     case lookup_function(Env0, {G, Arity}) of
         {ok,Fun} -> drive_call(Env0, E, L0, G, Arity, Fun, R);
@@ -58,7 +59,8 @@ drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
 drive(Env0, E={'fun',Lf,{function,G,Arity}}, R=[#call_ctxt{args=Args}|_])
   when length(Args) == Arity -> %R3
     drive(Env0, {'atom',Lf,G}, R);
-%% TODO: R3 for 'fun' references in any context
+%% TODO: R3 for 'fun' in any context
+%% TODO: R3 for {remote,_,lists,map} and so on.
 
 drive(Env0, E, R=[#case_ctxt{clauses=Cs0}|_])
   when element(1,E) == 'cons'; element(1,E) == 'tuple';
@@ -108,6 +110,7 @@ drive(Env0, E={T,_,_}, Ctxt=[#op_ctxt{line=L, op=Op, e1=hole, e2=E2}|R])
 drive(Env0, {cons,L,H,T}, R) ->                 %R11 for cons
     drive(Env0, H, [#cons_ctxt{line=L, tail=T}|R]);
 drive(Env0, {op,L,Op,E1,E2}, R) ->              %R11
+    %% TODO: handle ++ specially
     drive(Env0, E1, [#op_ctxt{line=L, op=Op, e2=E2}|R]);
 drive(Env0, {op,L,Op,E}, R) ->
     drive(Env0, E, [#op1_ctxt{line=L, op=Op}|R]);
@@ -124,6 +127,8 @@ drive(Env0, {'match',L,P,E}, R) ->
 
 drive(Env0, {'case',L,E,Cs}, R) ->              %R13
     drive(Env0, E, [#case_ctxt{line=L, clauses=Cs}|R]);
+
+%% TODO: 'compile' list comprehensions
 
 %% Fallthrough.
 drive(Env0, Expr, R) ->                         %R14
@@ -241,6 +246,7 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
 
     case Renaming of
         {ok,Fname} ->
+            %% L is a renaming of an old expression.
             io:fwrite("Folding. Fname=~p, FV=~p~n",[Fname,FV]),
             Expr={'call',Line,{atom,Line,Fname},[{var,Line,X} || X <- FV]},
             {Env0#env{found=[Fname|Env0#env.found]},Expr};
@@ -260,8 +266,12 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
             case lists:member(Fname, Env5#env.found) of
                 false ->
                     %% Fname was never used in E, so there is no need
-                    %% to residualize a new function.
-                    {Env5,E};
+                    %% to residualize a new function. This basically
+                    %% inlines what would otherwise be a new function.
+                    %% Need to forget about Fname, because otherwise
+                    %% it might be used afterwards.
+                    Env6 = Env5#env{ls = lists:keydelete(Fname, 1, Env5#env.ls)},
+                    {Env6,E};
                 _ ->
                     Head = [scp_expr:subst(S, {var,Line,X}) || X <- FV],
                     %% io:fwrite("S: ~p~n", [S]),
