@@ -1,5 +1,6 @@
 -module(testcases).
--export([to_utf8/1, ap3/3, sumsqs/1]).
+-export([to_utf8/1,
+         ap3/3, sumsqs/1]).
 -include("scp.hrl").
 -compile({parse_transform, erlang_supercompiler}).
 
@@ -121,6 +122,22 @@ div_test() ->
 tuple_test() ->
     1=element(1,{tuple_case_test(),1+1,1+1+1}).
 
+guard_variable_test() ->
+    1 = case {1} of
+            {X} when X == 1 ->
+                X;
+            _ ->
+                0
+        end.
+
+guard_2_variable_test() ->
+    1 = case {3,2} of
+            {X,Y} when X > Y ->
+                X-Y;
+            _ ->
+                0
+        end.
+
 %% bar_test() ->
 %%     1,
 %%     fun (X) ->
@@ -151,6 +168,7 @@ tuple_test() ->
 %%         _ -> B = X
 %%     end,
 %%     B.
+
 
 to_utf8(Code, Len, I, Set, Mask) when Len >= I ->
     A = if Len == I -> Code; true -> Code bsr (6 * (Len - I)) end,

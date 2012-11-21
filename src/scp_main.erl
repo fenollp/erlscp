@@ -60,7 +60,7 @@ drive(Env0, E={'fun',Lf,{function,G,Arity}}, R=[#call_ctxt{args=Args}|_])
   when length(Args) == Arity -> %R3
     drive(Env0, {'atom',Lf,G}, R);
 %% TODO: R3 for 'fun' in any context
-%% TODO: R3 for {remote,_,lists,map} and so on.
+%% TODO: R3 for {remote,_,{atom,_,lists},{atom,_,flatten}} and so on.
 
 drive(Env0, E, R=[#case_ctxt{clauses=Cs0}|_])
   when element(1,E) == 'cons'; element(1,E) == 'tuple';
@@ -199,7 +199,6 @@ build_case_general(Env0, Expr, Line, Cs0, R) ->
     %% Drive every clause body in the R context.
     {Cs1,Env1} = lists:mapfoldr(
                    fun ({clause,Lc,H0,G0,B0},Env00) ->
-                           %% TODO: what about guards?
                            Vars = head_variables(H0),
                            Env01 = extend_bound(Env00, Vars),
                            B1 = scp_expr:list_to_block(Lc, B0),
@@ -299,6 +298,8 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
 %% Driving of case expressions.
 drive_const_case(Env0, E, Ctxt=[CR=#case_ctxt{clauses=Cs0}|R]) ->
     %% E is a constant.
+    %% TODO: drive_constructor_case is much more powerful and should be
+    %% used for this as well...
     case scp_pattern:find_matching_const(Env0#env.bound, E, Cs0) of
         [{yes,{clause,L,[{var,_,V}],[],B}}] ->   %R7
             %% The case just binds a variable to a constant.
@@ -354,6 +355,8 @@ drive_constructor_case(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0, line=Line}|R])
                 %%     %% TODO: check that this works. Also check if it
                 %%     %% would work better to make the block and then do
                 %%     %% driving on that instead.
+                %%     %% TODO: if Lhs=nothing for all SCs, then residualize
+                %%     %% Rhs for effect
                 %%     io:fwrite("Stuff happening~n"),
                 %%     {Env1,Rhs} = drive(Env0, Rhs0, []),
                 %%     {Env2,Var} = scp_expr:gensym(Env1, "P"),
@@ -376,11 +379,13 @@ drive_constructor_case(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0, line=Line}|R])
             build(Env0, E0, Ctxt)
     end.
 
-
 rebuild_clauses(Env, Rhs, [{C0,nothing}|SCs]) ->
     [C0|rebuild_clauses(Env, Rhs, SCs)];
 rebuild_clauses(Env, Rhs, [{C0,Lhs}|SCs]) ->
+    %% Replace Lhs with Rhs in the body, if it's semantically ok.
     {clause,L,P,G,B0} = C0,
+    %% FIXME: if Lhs ever appears in a guard, then Rhs must be a legal
+    %% guard expression.
     case scp_expr:terminates(Env, Rhs)
         orelse (scp_expr:is_linear(Lhs, B0)
                 andalso scp_expr:is_strict(Lhs, B0)) of

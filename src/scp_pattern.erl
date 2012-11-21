@@ -16,29 +16,6 @@
 pattern_variables(Expr) ->
     Vars = erl_syntax_lib:variables(Expr),
     sets:to_list(Vars).
-%% pattern_variables(Expr) ->
-%%     Vars = pv(Expr),
-%%     gb_sets:to_list(gb_sets:from_list(Vars)).
-%% pv({integer,_,_}) -> [];
-%% pv({char,_,_}) -> [];
-%% pv({float,_,_}) -> [];
-%% pv({atom,_,_}) -> [];
-%% pv({string,_,_}) -> [];
-%% pv({nil,_}) -> [];
-%% pv({var,_,'_'}) -> [];
-%% pv({var,_,V}) -> [V];
-%% pv({op,_,A}) -> pv(A);
-%% pv({op,_,L,R}) -> pv(L) ++ pv(R);
-%% pv({match,_,L,R}) -> pv(L) ++ pv(R);
-%% pv({cons,_,H,T}) -> pv(H) ++ pv(T);
-%% pv({tuple,_,Ps}) -> lists:flatmap(fun pv/1, Ps);
-%% pv({bin,_,Fs}) -> lists:flatmap(fun pv_bin/1, Fs);
-%% pv({record,_,_Name,Pfs}) -> lists:flatmap(fun pv_record/1, Pfs);
-%% pv({record_index,_,_Name,F}) -> pv(F).
-%% pv_record({record_field,_,{atom,_,F},P}) -> pv(P);
-%% pv_record({record_field,_,{var,_,'_'},P}) -> pv(P).
-%% pv_bin({bin_element,_,Value,default,Type}) -> pv(Value);
-%% pv_bin({bin_element,_,Value,Size,Type}) -> pv(Value) ++ pv(Size).
 
 %% A pattern is simple if no variable appears more than once and there
 %% are no match expressions.
@@ -207,7 +184,11 @@ common(_, E0, Cs, []) ->
 common_try(Bs, Path, E0, Cs) ->
     case path_ref(Path, E0) of
         {ok,Rhs} ->
-            io:fwrite("Rhs: ~p~n",[Rhs]),
+            io:fwrite("Path: ~p, Rhs: ~p~n",[Path,Rhs]),
+            %% TODO: if Rhs is a variable and it is used in a pattern
+            %% more than once, then find all occurences in the
+            %% patterns and see if, for each one, the same occurence
+            %% is in E0. If so, remove all but one occurence.
             SCs = [reconcile(Bs, Path, Rhs, C) || C <- Cs],
             case lists:member(false,[Rhs|SCs]) of
                 true ->
@@ -219,7 +200,6 @@ common_try(Bs, Path, E0, Cs) ->
                     E = path_elim(Path, E0),
                     io:fwrite("E: ~p~n",[E]),
                     {E,Rhs,SCs}
-                    %%{E0,nothing,[{C,nothing} || C <- Cs]}
             end;
         _ ->
             false
@@ -228,7 +208,11 @@ common_try(Bs, Path, E0, Cs) ->
 common_default(E0, Cs) ->
     {E0,nothing,[{C,nothing} || C <- Cs]}.
 
-reconcile(Bs, Path, Rhs, {clause,L,[P0],G,B}) ->
+reconcile(_Bs, _Path, _Rhs, C={clause,_,[{var,_,'_'}],_,_}) ->
+    %% This pattern matches anything, the structure of the scrutinee
+    %% doesn't matter.
+    {C,nothing};
+reconcile(Bs, Path, Rhs, C={clause,L,[P0],G,B}) ->
     PExpr = path_ref(Path, P0),
     io:fwrite("PExpr: ~p~n",[PExpr]),
     case [Rhs|PExpr] of
@@ -249,13 +233,19 @@ reconcile(Bs, Path, Rhs, {clause,L,[P0],G,B}) ->
                     false;
                 _ ->
                     P = path_elim(Path, P0),
-                    case sets:is_element(N, sets:union(guard_variables(G),
-                                                       erl_syntax_lib:variables(P))) of
+                    InG = sets:is_element(N, guard_variables(G)),
+                    InP = sets:is_element(N, erl_syntax_lib:variables(P)),
+                    case InG orelse InP of
                         true ->
                             %% The variable is used in the guard or
-                            %% was used twice in P0. TODO: see if the
-                            %% variable can be replaced with Rhs.
-                            false;
+                            %% was used twice in P0.
+                            case InG of
+                                true ->
+                                    %% Try constant propagation.
+                                    reconcile_guard(Rhs, N, C, P);
+                                _ ->
+                                    false
+                            end;
                         _ ->
                             %% The variable can be replaced with Rhs.
                             {{clause,L,[P],G,B},N}
@@ -265,7 +255,24 @@ reconcile(Bs, Path, Rhs, {clause,L,[P0],G,B}) ->
         %% that can't possibly match.
         _ ->
             %% There was no way to reconcile Rhs and PExpr.
-            io:fwrite("Irreconcilable: ~p and ~p~n",[Rhs,PExpr]),
+            io:fwrite("Irreconcilable:~n ~p~n ~p~n",[Rhs,PExpr]),
+            false
+    end.
+
+%% The variable N is used in P0 on path Path, but also in other places
+%% in P0 or G. It might be possible to use P by replacing the
+%% occurences of N in G0 with Rhs.
+reconcile_guard(Rhs, N, {clause,L,[P0],G0,B}, P) ->
+    io:fwrite("Nonlinear variable: ~p in ~p or ~p~n", [N,P0,G0]),
+    case erl_lint:is_guard_test(Rhs) of
+        true ->
+            io:fwrite("Replace with ~p.~n",[Rhs]),
+            S = dict:from_list([{N, Rhs}]),
+            G = [[scp_expr:subst(S,X) || X <- Xs] || Xs <- G0],
+            io:fwrite("Afterwards: ~p~n", [{{clause,L,[P],G,B},N}]),
+            %% TODO: constant folding on G
+            {{clause,L,[P],G,B},N};
+        _ ->
             false
     end.
 
