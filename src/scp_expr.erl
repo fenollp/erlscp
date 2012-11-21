@@ -5,17 +5,17 @@
 
 -module(scp_expr).
 -export([read/1,
-         list_to_block/2, make_block/3,
-         make_case/3,
+         list_to_block/2, make_block/3, result_exp/1,
+         make_case/3, make_if/2, make_call/3,
          function_to_fun/1, fun_to_function/3,
-         simplify/1,
          variables/1, free_variables/2, subst/2,
          matches/1,
          fresh_variables/3, gensym/2,
          alpha_convert/2,
          make_letrec/3, extract_letrecs/1,
          find_renaming/2,
-         terminates/2, is_linear/2, is_strict/2]).
+         terminates/2, is_linear/2, is_strict/2,
+         apply_op/4, apply_op/3]).
 -include("scp.hrl").
 
 read(S) ->
@@ -55,10 +55,6 @@ make_block(L0, E1, E2) ->
                     {'block',L0,[E1n,E2]}
             end
     end.
-
-make_case(Line, E, Cs0) ->
-    {'case',Line,E,Cs0}.
-
 is_simple({var,_,_}) -> true;
 is_simple({integer,_,_}) -> true;
 is_simple({float,_,_}) -> true;
@@ -68,19 +64,34 @@ is_simple({char,_,_}) -> true;
 is_simple({nil,_}) -> true;
 is_simple({'fun',_,_}) -> true;
 is_simple(_) -> false.
+result_exp({'block',_,_E0,E1}) -> E1;
+result_exp(E) -> E.
+
+make_case(Line, E, Cs0) ->
+    {'case',Line,E,Cs0}.
+
+make_if(Line, Cs0) ->
+    {'if',Line,Cs0}.
+
+%% Make a function call, but try some simplifications first.
+make_call(Line, {'atom',L,element}, [{integer,_,I},{tuple,_,Es}])
+  when I > 0, I =< length(Es) ->
+    %% Need to residualize the rest of Es for effect.
+    Rest = lists:sublist(Es, 1, I - 1) ++
+        lists:sublist(Es, I + 1, length(Es)),
+    list_to_block(L, Rest ++ [lists:nth(I, Es)]);
+make_call(Env, {'atom',L,hd}, [{cons,_,H,T}]) ->
+    %% Residualize T for effect.
+    make_block(L, T, H);
+make_call(Line,Expr,Args) ->
+    {call,Line,Expr,Args}.
+
 
 %% Conversion between global and local functions.
 function_to_fun({function,Line,_Name,_Arity,Clauses}) ->
     {'fun',Line,{clauses,Clauses}}.
 fun_to_function({'fun',Line,{clauses,Clauses}},Name,Arity) ->
     {function,Line,Name,Arity,Clauses}.
-
-%% TODO: Simplifies a form which was given to the parser transform.
-%% Turns all bodies and blocks into two-armed blocks.
-simplify({block,L,Es}) ->
-    list_to_block(L, Es);
-simplify(Expr) ->
-    Expr.
 
 delete_duplicates([X|Xs]) -> [X|[Y || Y <- Xs, X =/= Y]];
 delete_duplicates([]) -> [].
@@ -120,7 +131,6 @@ matches0(Expr) ->
             lists:map(fun (Es) -> lists:map(fun matches0/1, Es) end,
                       erl_syntax:subtrees(Expr))
     end.
-
 
 %% Generate a fresh variable.
 gensym(Env0, Prefix) ->
@@ -549,7 +559,6 @@ terminates(Env, {var,_,N}) ->
     %% If a variable is in split_vars it could represent any kind of
     %% expression whatsoever. This would represent the guard in R8.
     not lists:member(N, Env#env.split_vars);
-terminates(Env, {var,_,_}) -> true;
 terminates(Env, {integer,_,_}) -> true;
 terminates(Env, {float,_,_}) -> true;
 terminates(Env, {atom,_,_}) -> true;
@@ -569,6 +578,30 @@ is_linear(Var, E) ->
 is_strict(Var, E) ->
     %% TODO
     true.
+
+
+%% Constant folding.
+apply_op(L, '+', {integer,_,I1}, {integer,_,I2}) ->
+    {ok,{integer,L,I1+I2}};
+apply_op(L, '-', {integer,_,I1}, {integer,_,I2}) ->
+    {ok,{integer,L,I1-I2}};
+apply_op(L, '*', {integer,_,I1}, {integer,_,I2}) ->
+    {ok,{integer,L,I1*I2}};
+apply_op(L, '/', {integer,_,I1}, {integer,_,I2}) when I2 =/= 0 ->
+    {ok,{integer,L,I1/I2}};
+apply_op(L, '==', {integer,_,I1}, {integer,_,I2}) ->
+    {ok,{atom,L,I1==I2}};
+apply_op(L, '>=', {integer,_,I1}, {integer,_,I2}) ->
+    {ok,{atom,L,I1>=I2}};
+apply_op(L, '>', {integer,_,I1}, {integer,_,I2}) ->
+    {ok,{atom,L,I1>I2}};
+%% TODO: more operators
+apply_op(_,_,_,_) ->
+    false.
+apply_op(L, '-', {integer,_,I}) ->
+    {ok,{integer,L,-I}};
+apply_op(_,_,_) ->
+    false.
 
 %% EUnit tests.
 

@@ -21,7 +21,7 @@ forms(Forms0, Env) ->
 form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
     %% TODO: what parts of the environment should be reset?
     io:fwrite("~n~nLooking at function: ~w/~w~n", [Name, Arity]),
-    Expr0 = scp_expr:simplify(scp_expr:function_to_fun(F)),
+    Expr0 = scp_expr:function_to_fun(F),
     Seen = sets:union(Env0#env.seen_vars,
                       erl_syntax_lib:variables(Expr0)),
     Env1 = Env0#env{bound = sets:new(),

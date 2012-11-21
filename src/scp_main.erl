@@ -37,24 +37,23 @@ drive(Env0, E={tuple,_,[]}, R=[#case_ctxt{clauses=Cs0}|_]) -> %R1
 
 drive(Env0, E2={T,_,_}, Ctxt=[#op_ctxt{line=L, op=Op, e1=E1, e2=hole}|R])
   when T=='integer'; T=='float'; T=='atom'; T=='string'; T=='char' -> %R2
-    case apply_op(L, Op, E1, E2) of
+    case scp_expr:apply_op(L, Op, E1, E2) of
         {ok,V} -> drive(Env0, V, R);
         _ -> build(Env0, E2, Ctxt)
     end;
 drive(Env0, E1={T,_,_}, Ctxt=[#op1_ctxt{line=L, op=Op}|R])
   when T=='integer'; T=='float'; T=='atom'; T=='string'; T=='char' -> %R2
-    case apply_op(L, Op, E1) of
+    case scp_expr:apply_op(L, Op, E1) of
         {ok,V} -> drive(Env0, V, R);
         _ -> build(Env0, E1, Ctxt)
     end;
 
 drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
-    %% This is a function call to a local function or a BIF. TODO:
-    %% handle BIFs
+    %% This is a function call to a local function or a BIF.
     Arity = length(Args),
     case lookup_function(Env0, {G, Arity}) of
         {ok,Fun} -> drive_call(Env0, E, L0, G, Arity, Fun, R);
-        _ -> build(Env0, E, R)
+        _ -> drive_BIF(Env0, E, R)
     end;
 drive(Env0, E={'fun',Lf,{function,G,Arity}}, R=[#call_ctxt{args=Args}|_])
   when length(Args) == Arity -> %R3
@@ -64,7 +63,8 @@ drive(Env0, E={'fun',Lf,{function,G,Arity}}, R=[#call_ctxt{args=Args}|_])
 
 drive(Env0, E, R=[#case_ctxt{clauses=Cs0}|_])
   when element(1,E) == 'cons'; element(1,E) == 'tuple';
-       element(1,E) == 'bin'; element(1,E) == 'record' -> %R4
+       element(1,E) == 'bin'; element(1,E) == 'record';
+       element(1,E) == 'op' -> %R4
     drive_constructor_case(Env0, E, R);
 
 drive(Env0, {'fun',Lf,{clauses,Cs0}}, [#call_ctxt{line=Lc,args=As}|R]) -> %R5
@@ -128,6 +128,9 @@ drive(Env0, {'match',L,P,E}, R) ->
 drive(Env0, {'case',L,E,Cs}, R) ->              %R13
     drive(Env0, E, [#case_ctxt{line=L, clauses=Cs}|R]);
 
+drive(Env0, {'if',L,Cs}, R) ->
+    drive_if(Env0, L, Cs, R);
+
 %% TODO: 'compile' list comprehensions
 
 %% Fallthrough.
@@ -162,7 +165,7 @@ build(Env0, Expr, [#op_ctxt{line=Line, op=Op, e1=E1, e2=hole}|R]) ->        %R16
 
 build(Env0, Expr, [#call_ctxt{line=Line, args=Args0}|R]) -> %R17
     {Env,Args} = drive_list(Env0, fun drive/3, Args0),
-    build(Env, {call,Line,Expr,Args}, R);
+    build(Env, scp_expr:make_call(Line,Expr,Args), R);
 %% build(Env0, Expr={var,_,_}, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R18
 %%     drive_case_variable(Env0, Expr, Line, Cs0, R);
 build(Env0, Expr, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R19
@@ -170,9 +173,7 @@ build(Env0, Expr, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R19
 build(Env0, Expr, [#op1_ctxt{line=Line, op=Op}|R]) ->
     build(Env0, {op,Line,Op,Expr}, R);
 build(Env0, Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
-    %% This is a lone match at the end of a block.
-    Match = {match,Line,P,Expr},
-    build(Env0, Match, R);
+    build(Env0, {match,Line,P,Expr}, R);
 
 build(Env, Expr, []) ->                         %R20
     {Env, Expr}.
@@ -197,6 +198,7 @@ build(Env, Expr, []) ->                         %R20
 
 build_case_general(Env0, Expr, Line, Cs0, R) ->
     %% Drive every clause body in the R context.
+    %% TODO: should have the same features as drive_constructor_case
     {Cs1,Env1} = lists:mapfoldr(
                    fun ({clause,Lc,H0,G0,B0},Env00) ->
                            Vars = head_variables(H0),
@@ -207,10 +209,49 @@ build_case_general(Env0, Expr, Line, Cs0, R) ->
                            {{clause,Lc,H0,G0,[B]},Env03}
                    end,
                    Env0, Cs0),
-    %% FIXME: find the new bindings going out of the case
+    %% FIXME: find the new bindings going out of the case expr
     Case = scp_expr:make_case(Line, Expr, Cs1),
     {Env1, Case}.
 
+
+%% Driving of if expressions.
+drive_if(Env0, L, Cs0, R) -> drive_if(Env0, L, Cs0, R, []).
+
+drive_if(Env0, Line, [{clause,Lc,[],G0,B0}|Cs], R, Acc) ->
+    B1 = scp_expr:list_to_block(Lc, B0),
+    G = scp_pattern:simplify_guard_seq(G0),
+    case scp_pattern:guard_seq_eval(G) of
+        true when Acc == [] ->
+            %% The guard is always true and there were no other
+            %% clauses before this one. Eliminate the if expression
+            %% completely.
+            drive(Env0, B1, R);
+        true ->
+            %% The guard is always true. Remove the rest of the
+            %% clauses.
+            drive_if1(Env0, Line, Lc, G, B1, [], R, Acc);
+        false when Cs =/= []; Acc =/= [] ->
+            %% The guard is always false and this is not the only
+            %% clause left. Remove the clause.
+            drive_if(Env0, Line, Cs, R, Acc);
+        _ ->
+            %% This clause is maybe true or it is the last clause
+            %% which is always false.
+            drive_if1(Env0, Line, Lc, G, B1, Cs, R, Acc)
+    end;
+drive_if(Env0, Line, [], _R, Acc) ->
+    %% TODO: find the new bindings going out of the if expr
+    {Env0, scp_expr:make_if(Line, lists:reverse(Acc))}.
+
+drive_if1(Env0, Line, Lc, G, B0, Cs, R, Acc) ->
+    %% Drive a single if clause in the R context (thereby pushing R
+    %% into the clause body).
+    {Env1,B} = drive(Env0, B0, R),
+    %% New bindings in one clause are not transmitted to the next
+    %% clause.
+    Env2 = Env1#env{bound=Env0#env.bound},
+    C = {clause,Lc,[],G,[B]},
+    drive_if(Env2, Line, Cs, R, [C|Acc]).
 
 %% Driving of function clauses (always in the empty context).
 drive_list(Env0, Fun, [C0|Cs0]) ->
@@ -224,7 +265,6 @@ drive_clauses(Env, Cs) ->
 drive_clause(Env0, {clause,L,Head,Guard,Body0}, _) ->
     Vars = head_variables(Head),
     Env1 = extend_bound(Env0, Vars),
-    %% XXX: list_to_block shouldn't be needed after simplify
     {Env2,Body} = drive(Env1, scp_expr:list_to_block(L, Body0), []),
     Env = Env2#env{bound=Env0#env.bound},
     {Env,{clause,L,Head,Guard,[Body]}}.
@@ -294,6 +334,10 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
             end
     end.
 
+%% Driving of built-in functions. This is where things like length/1
+%% can be inlined.
+drive_BIF(Env, E, R) ->
+    build(Env, E, R).
 
 %% Driving of case expressions.
 drive_const_case(Env0, E, Ctxt=[CR=#case_ctxt{clauses=Cs0}|R]) ->
@@ -372,7 +416,6 @@ drive_constructor_case(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0, line=Line}|R])
                     io:fwrite("Stuff was easy. Cs1=~p~n",[Cs1]),
                     drive(Env0, E, [CR#case_ctxt{clauses=Cs1}|R])
             end;
-            %%build(Env0, E0, Ctxt);
         Foo ->
             %% Something more clever happened.
             io:fwrite("constructor case default: E=~p~n Ctxt=~p~n Foo=~p~n", [E0,Ctxt,Foo]),
@@ -420,27 +463,16 @@ plug(Expr, [#tuple_ctxt{line=Line, done=Ds, todo=Ts}|R]) ->
 plug(Expr, []) ->
     Expr.
 
-%% Constant folding.
-apply_op(L, '+', {integer,_,I1}, {integer,_,I2}) ->
-    {ok,{integer,L,I1+I2}};
-apply_op(L, '-', {integer,_,I1}, {integer,_,I2}) ->
-    {ok,{integer,L,I1-I2}};
-apply_op(L, '*', {integer,_,I1}, {integer,_,I2}) ->
-    {ok,{integer,L,I1*I2}};
-apply_op(L, '/', {integer,_,I1}, {integer,_,I2}) when I2 =/= 0 ->
-    {ok,{integer,L,I1/I2}};
-%% TODO: more operators
-apply_op(_,_,_,_) ->
-    false.
-
-apply_op(L, '-', {integer,_,I}) ->
-    {ok,{integer,L,-I}};
-apply_op(_,_,_) ->
-    false.
-
 %% EUnit tests.
 
 build_test() ->
     {_,{integer,0,123}} = drive(#env{}, {integer,0,123}, []),
     Fun = {'fun',1, {clauses, [{clause,1,[{var,1,'X'}], [], [{var,2,'X'}]}]}},
     drive(#env{}, Fun, []).
+
+residualize_test() ->
+    %% When something is removed from the scrutinee it must either be
+    %% side-effect free or else be residualized for effect.
+    E0 = scp_expr:read("case {1,length(U)} of {X,_} -> 1 end"),
+    {Env,E} = drive(#env{}, E0, []),
+    ['U'] = scp_expr:free_variables(sets:new(), E).

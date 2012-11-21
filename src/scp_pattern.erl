@@ -1,12 +1,14 @@
 %% -*- coding: utf-8; mode: erlang -*-
 %% @copyright 2012 Göran Weinholt
 %% @author Göran Weinholt <goran@weinholt.se>
-%% @doc Pattern matching utilities.
+%% @doc Pattern matching and guard utilities.
 
 -module(scp_pattern).
 -export([pattern_variables/1,
          find_matching_const/3,
-         simplify/3]).
+         simplify/3,
+         simplify_guard_seq/1,
+         guard_seq_eval/1]).
 
 -include("scp.hrl").
 
@@ -46,17 +48,42 @@ fmcc(E, [C|Cs]) -> [{maybe,C}|fmcc(E, Cs)];
 fmcc(_, []) -> [].
 %%fmcc_cons(E, C={Taken,{clause,_,_,[],_}}, Cs) -> [C];
 fmcc_cons(E, C={Taken,{clause,L,P,Guard,B}}, Cs) ->
-    case static_eval(E, Guard) of
+    case guard_seq_eval(Guard) of
         true -> [{Taken,{clause,L,P,[],B}}];
         false -> fmcc(E, Cs);
         _ -> [C|fmcc(E, Cs)]
     end.
 
-%% Statically evaluate a guard.
-static_eval(_, []) -> true;
-static_eval(_, [[{atom,_,true}]]) -> true;
-static_eval(_, [[{atom,_,_}]]) -> false;        %XXX: check is this is really true
-static_eval(_E, _G) -> maybe.
+%% Statically evaluate a guard sequence.
+guard_seq_eval([]) -> true;
+guard_seq_eval([[{atom,_,true}]]) -> true;
+guard_seq_eval([[{atom,_,_}]]) -> false;
+guard_seq_eval(_G) -> maybe.
+
+%% Simplify a guard sequence by doing constant folding and
+%% simplifications. TODO: remove redundant guards but do not remove
+%% the last guard, 'if' expressions can't have empty guard sequences.
+simplify_guard_seq([G0|Gs]) ->
+    G = [geval(X) || X <- G0],
+    [G|Gs];
+simplify_guard_seq([]) ->
+    [].
+
+geval(E={op,L,Op,A0,B0}) ->
+    A = geval(A0),
+    B = geval(B0),
+    case scp_expr:apply_op(L, Op, A, B) of
+        {ok,V} -> V;
+        _ -> E
+    end;
+geval(E={call,Line,F0,As0}) ->
+    F = geval(F0),
+    As = [geval(X) || X <- As0],
+    %% make_call knows some tricks. Get the result expression, because
+    %% side-effects in guards aren't too important, and there are no
+    %% blocks in guards.
+    scp_expr:result_exp(scp_expr:make_call(Line,F,As));
+geval(E) -> E.
 
 
 %% Perform one simplification on a case expression. Given the bound
@@ -64,7 +91,6 @@ static_eval(_E, _G) -> maybe.
 %% return a new E, an extracted expression and a new list of clauses.
 %% Each clause may also have a variable name associated with it, to
 %% which the extracted expression should be bound.
-
 simplify(Bs, E0, Cs0) ->
     io:fwrite("simplify E0=~p~n Cs0=~p~n",[E0,Cs0]),
     {E1,Cs1} = trivial(E0, Cs0),
@@ -130,7 +156,7 @@ impossible(Bs, E, [C={clause,L,P=[{var,_,N}],Guard,B}|Cs]) ->
             %% But this variable is bound.
             [C|impossible(Bs, E, Cs)];
         _ ->
-            case static_eval(E, Guard) of
+            case guard_seq_eval(Guard) of
                 true -> [{clause,L,P,[],B}];
                 false -> impossible(Bs, E, Cs);
                 _ -> [C|impossible(Bs, E, Cs)]
@@ -158,7 +184,7 @@ impossible(Bs, _, []) ->
     [].
 
 imp_cons(Bs, E, C={clause,_,_,Guard,_}, Cs) ->
-    case static_eval(E, Guard) of
+    case guard_seq_eval(Guard) of
         false -> impossible(Bs, E, Cs);
         _ -> [C|impossible(Bs, E, Cs)]
     end.
@@ -263,6 +289,7 @@ reconcile(Bs, Path, Rhs, C={clause,L,[P0],G,B}) ->
 %% in P0 or G. It might be possible to use P by replacing the
 %% occurences of N in G0 with Rhs.
 reconcile_guard(Rhs, N, {clause,L,[P0],G0,B}, P) ->
+    %% FIXME: must check if Rhs is a variable in split_vars
     io:fwrite("Nonlinear variable: ~p in ~p or ~p~n", [N,P0,G0]),
     case erl_lint:is_guard_test(Rhs) of
         true ->
@@ -270,8 +297,7 @@ reconcile_guard(Rhs, N, {clause,L,[P0],G0,B}, P) ->
             S = dict:from_list([{N, Rhs}]),
             G = [[scp_expr:subst(S,X) || X <- Xs] || Xs <- G0],
             io:fwrite("Afterwards: ~p~n", [{{clause,L,[P],G,B},N}]),
-            %% TODO: constant folding on G
-            {{clause,L,[P],G,B},N};
+            {{clause,L,[P],simplify_guard_seq(G),B},N};
         _ ->
             false
     end.

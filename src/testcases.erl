@@ -138,6 +138,26 @@ guard_2_variable_test() ->
                 0
         end.
 
+if_test() ->
+    1 = ?LET(X, 42,
+             if X == 42 ->
+                     1;
+                true ->
+                     2
+             end).
+
+guard_simplify_test() ->
+    1 = case {{1}} of
+            {X} when element(1, X) == 1 ->
+                element(1, X)
+        end.
+
+guard_2_simplify_test() ->
+    1 = case {{1},length([1,2,3])} of
+            {X,_} when element(1, X) == 1 ->
+                element(1, X)
+        end.
+
 %% bar_test() ->
 %%     1,
 %%     fun (X) ->
@@ -200,7 +220,7 @@ ap([X|Xs],Ys) -> [X|ap(Xs,Ys)].
 ap3(Xs,Ys,Zs) ->
     ap(ap(Xs,Ys),Zs).
 
-%% These like these should be made with quickcheck and should be in a
+%% Tests like these should be made with quickcheck and should be in a
 %% different module so that they are not supercompiled.
 %% ap3_test() ->
 %%     X = [1,2,3],
