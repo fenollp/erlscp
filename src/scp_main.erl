@@ -240,7 +240,7 @@ drive_if(Env0, Line, [{clause,Lc,[],G0,B0}|Cs], R, Acc) ->
             drive_if1(Env0, Line, Lc, G, B1, Cs, R, Acc)
     end;
 drive_if(Env0, Line, [], _R, Acc) ->
-    %% TODO: find the new bindings going out of the if expr
+    %% FIXME: find the new bindings going out of the if expr
     {Env0, scp_expr:make_if(Line, lists:reverse(Acc))}.
 
 drive_if1(Env0, Line, Lc, G, B0, Cs, R, Acc) ->

@@ -199,7 +199,7 @@ to_utf8(_, _, _, _, _) ->
 
 to_utf8(Code, Len) ->
     LengthCodes = {16#00, 16#00, 16#C0, 16#E0, 16#F0},
-    lists:flatten(
+    flatten(
       [to_utf8(Code, Len, 1, element(Len + 1, LengthCodes), 16#FF),
        to_utf8(Code, Len, 2, 16#80, 16#BF),
        to_utf8(Code, Len, 3, 16#80, 16#BF),
@@ -242,3 +242,8 @@ map(Fun,[X|Xs]) -> [Fun(X)|map(Fun,Xs)].
 
 sumsqs(Xs) ->
     sum(map(fun square/1, Xs)).
+
+flatten([]) ->
+    [];
+flatten([Xs|Xss]) ->
+    ap(Xs,flatten(Xss)).
