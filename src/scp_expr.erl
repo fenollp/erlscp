@@ -478,6 +478,17 @@ find_var_subst(B, [{{op,_,Op,A1},{op,_,Op,A2}}|T]) ->
     find_var_subst(B, [{A1,A2} | T]);
 find_var_subst(B, [{{block,_,Es1},{block,_,Es2}}|T]) when length(Es1) == length(Es2) ->
     find_var_subst(B, lists:zip(Es1,Es2) ++ T);
+find_var_subst(B0, [{{'if',_,Cs1},{'if',_,Cs2}}|T]) when length(Cs1) == length(Cs2) ->
+    %% Pair up all the expressions from the guards and the bodies.
+    %% There are no patterns and thus no new variables.
+    {_,Gs1,Bs1} = unzip_clauses(Cs1),
+    {_,Gs2,Bs2} = unzip_clauses(Cs2),
+    [Es1,Es2] = lists:map(fun lists:flatten/1, [Gs1 ++ Bs1, Gs2 ++ Bs2]),
+    if length(Es1) == length(Es2) ->
+            find_var_subst(B0, lists:zip(Es1, Es2) ++ T);
+       true ->
+            false
+    end;
 find_var_subst(B0, [{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T]) when length(Cs1) == length(Cs2) ->
     {Ps10,Gs10,Bs1} = unzip_clauses(Cs1),
     {Ps20,Gs20,Bs2} = unzip_clauses(Cs2),
@@ -485,7 +496,7 @@ find_var_subst(B0, [{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T]) when length(Cs1) =
     if length(Ps1) == length(Ps2) andalso
        length(Gs1) == length(Gs2) andalso
        length(Bs1) == length(Bs2) ->
-            %% XXX: extract new bindings from the patterns and add them to B
+            %% Extract new bindings from the patterns and add them to B0.
             %% io:fwrite("Ps1=~p~nPs2=~p~n",[Ps1,Ps2]),
             %% io:fwrite("Work=~p~n",[[{E1,E2}] ++ lists:zip(Ps1,Ps2)]),
             case find_var_subst(B0, [{E1,E2}] ++ lists:zip(Ps1,Ps2)) of
@@ -500,8 +511,8 @@ find_var_subst(B0, [{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T]) when length(Cs1) =
                     B = sets:union(sets:from_list(Vars), B0),
                     Bodies = lists:flatmap(fun ({Body1,Body2}) ->
                                                lists:zip(Body1,Body2)
-                                       end,
-                                       lists:zip(Bs1, Bs2)),
+                                           end,
+                                           lists:zip(Bs1, Bs2)),
                     %% io:fwrite("new work=~p~n", [lists:zip(Gs1, Gs2) ++
                     %%                                 Bodies ++ T]),
                     %% Processing the patterns may have resulted in
@@ -530,7 +541,8 @@ find_var_subst(B, [{E1,E2}|T]) ->
             case lists:member(T1,
                               [integer,float,atom,string,char,nil,
                                variable,underscore,application,case_expr,
-                               list,infix_expr,prefix_expr,tuple]) of
+                               list,infix_expr,prefix_expr,tuple,
+                               implicit_fun,if_expr]) of
                 true -> true
             end,
             false;

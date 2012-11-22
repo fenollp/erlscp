@@ -1,5 +1,6 @@
 -module(testcases).
 -export([to_utf8/1,
+         string_to_utf8/1,
          ap3/3, sumsqs/1]).
 -include("scp.hrl").
 -compile({parse_transform, erlang_supercompiler}).
@@ -247,3 +248,12 @@ flatten([]) ->
     [];
 flatten([Xs|Xss]) ->
     ap(Xs,flatten(Xss)).
+
+string_to_utf8(S) ->
+    flatten(map(fun to_utf8/1, S)).
+
+%% broken(Code) ->
+%%     map(fun (X) ->
+%%                 X * 100
+%%         end,
+%%         to_utf8(Code)).
