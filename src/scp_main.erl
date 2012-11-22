@@ -399,8 +399,6 @@ drive_constructor_case(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0, line=Line}|R])
                 %%     %% TODO: check that this works. Also check if it
                 %%     %% would work better to make the block and then do
                 %%     %% driving on that instead.
-                %%     %% TODO: if Lhs=nothing for all SCs, then residualize
-                %%     %% Rhs for effect
                 %%     io:fwrite("Stuff happening~n"),
                 %%     {Env1,Rhs} = drive(Env0, Rhs0, []),
                 %%     {Env2,Var} = scp_expr:gensym(Env1, "P"),
@@ -412,9 +410,20 @@ drive_constructor_case(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0, line=Line}|R])
                 %%     io:fwrite("Stuff happened: NewE=~p~n", [NewE]),
                 %%     NewE;
                 false ->
-                    %% Lhs in each clause was substituted for Rhs.
-                    io:fwrite("Stuff was easy. Cs1=~p~n",[Cs1]),
-                    drive(Env0, E, [CR#case_ctxt{clauses=Cs1}|R])
+                    NewCtxt = [CR#case_ctxt{clauses=Cs1}|R],
+                    case lists:all(fun ({_,nothing}) -> true;
+                                       ({_,_}) -> false
+                                   end, SCs) of
+                        true ->
+                            %% Lhs=nothing for all SCs, must
+                            %% residualize Rhs for effect.
+                            io:fwrite("Residualized Rhs0=~p Cs1=~p~n", [Rhs0, Cs1]),
+                            drive(Env0, scp_expr:make_block(Line, Rhs0, E), NewCtxt);
+                        false ->
+                            %% Lhs in each clause was substituted for Rhs.
+                            io:fwrite("Stuff was easy. Cs1=~p~n",[Cs1]),
+                            drive(Env0, E, NewCtxt)
+                    end
             end;
         Foo ->
             %% Something more clever happened.
@@ -475,4 +484,5 @@ residualize_test() ->
     %% side-effect free or else be residualized for effect.
     E0 = scp_expr:read("case {1,length(U)} of {X,_} -> 1 end"),
     {Env,E} = drive(#env{}, E0, []),
-    ['U'] = scp_expr:free_variables(sets:new(), E).
+    io:fwrite("E=~p~n",[E]),
+    ['U'] = scp_expr:variables(E).
