@@ -368,9 +368,8 @@ ac_icr_clauses(Env0,S0,[],ExprType) ->
 
 %% The supercompiler creates letrecs. These do not exist in Erlang,
 %% but since the names are unique they can be implemented by placing
-%% the funs at the top level instead. An added complication is that
-%% erl_syntax isn't really too happy about new expression types, so
-%% the letrecs are dressed up as function calls.
+%% the funs at the top level instead. The letrecs masquerade as
+%% function calls.
 
 make_letrec(Line, [{Name,Arity,Fun}], Body) ->
     Fakefun = {'fun',1,{function,scp_expr,letrec,1}},
@@ -399,7 +398,7 @@ extrecs_1({'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, Ls0) ->
     %% And now from the body
     {Body,Ls2} = lists:mapfoldl(fun extract_letrecs/2, Ls1, Body0),
     E1 = list_to_block(Line,Body),
-    {E1,Bs++Ls1};
+    {E1,Bs++Ls2};
 extrecs_1(E,Ls) ->
     erl_syntax_lib:mapfold_subtrees(fun extrecs_1/2, Ls, E).
 
@@ -454,21 +453,22 @@ find_var_subst(B, [{{var,_,N},{var,_,N}}|T]) ->
 find_var_subst(B, [{{var,_,_},{var,_,'_'}}|T]) -> false;
 find_var_subst(B, [{{var,_,'_'},{var,_,_}}|T]) -> false;
 find_var_subst(B, [{{var,_,N1},E2={var,_,N2}}|T]) ->
-    Bound1 = sets:is_element(N1, B),
-    Bound2 = sets:is_element(N2, B),
-    if Bound1 or Bound2 ->
+    case sets:is_element(N1, B) orelse sets:is_element(N2, B) of
+        true ->
             %% The variables are different and one of them is bound. A
             %% renaming is not possible.
             false;
-       true ->
+        false ->
             %% Make a substitution from N1 to E2.
             Sd = dict:from_list([{N1,E2}]),
             find_var_subst(B, [{subst(Sd, A),subst(Sd, B)} || {A,B} <- T],
                            [{N1,E2}])
     end;
-find_var_subst(B, [{{call,_,F1,As1},{call,_,F2,As2}}|T]) when length(As1) == length(As2) ->
+find_var_subst(B, [{{call,_,F1,As1},{call,_,F2,As2}}|T])
+  when length(As1) == length(As2) ->
     find_var_subst(B, [{F1,F2} | lists:zip(As1,As2)] ++ T);
-find_var_subst(B, [{{tuple,_,Es1},{tuple,_,Es2}}|T]) when length(Es1) == length(Es2) ->
+find_var_subst(B, [{{tuple,_,Es1},{tuple,_,Es2}}|T])
+  when length(Es1) == length(Es2) ->
     find_var_subst(B, lists:zip(Es1,Es2) ++ T);
 find_var_subst(B, [{{cons,_,H1,T1},{cons,_,H2,T2}}|T]) ->
     find_var_subst(B, [{H1,H2}, {T1,T2} | T]);
@@ -476,9 +476,11 @@ find_var_subst(B, [{{op,_,Op,L1,R1},{op,_,Op,L2,R2}}|T]) ->
     find_var_subst(B, [{L1,L2}, {R1,R2} | T]);
 find_var_subst(B, [{{op,_,Op,A1},{op,_,Op,A2}}|T]) ->
     find_var_subst(B, [{A1,A2} | T]);
-find_var_subst(B, [{{block,_,Es1},{block,_,Es2}}|T]) when length(Es1) == length(Es2) ->
+find_var_subst(B, [{{block,_,Es1},{block,_,Es2}}|T])
+  when length(Es1) == length(Es2) ->
     find_var_subst(B, lists:zip(Es1,Es2) ++ T);
-find_var_subst(B0, [{{'if',_,Cs1},{'if',_,Cs2}}|T]) when length(Cs1) == length(Cs2) ->
+find_var_subst(B0, [{{'if',_,Cs1},{'if',_,Cs2}}|T])
+  when length(Cs1) == length(Cs2) ->
     %% Pair up all the expressions from the guards and the bodies.
     %% There are no patterns and thus no new variables.
     {_,Gs1,Bs1} = unzip_clauses(Cs1),
@@ -489,7 +491,8 @@ find_var_subst(B0, [{{'if',_,Cs1},{'if',_,Cs2}}|T]) when length(Cs1) == length(C
        true ->
             false
     end;
-find_var_subst(B0, [{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T]) when length(Cs1) == length(Cs2) ->
+find_var_subst(B0, [{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T])
+  when length(Cs1) == length(Cs2) ->
     {Ps10,Gs10,Bs1} = unzip_clauses(Cs1),
     {Ps20,Gs20,Bs2} = unzip_clauses(Cs2),
     [Ps1,Ps2,Gs1,Gs2] = lists:map(fun lists:flatten/1, [Ps10,Ps20,Gs10,Gs20]),
@@ -527,24 +530,47 @@ find_var_subst(B0, [{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T]) when length(Cs1) =
        true ->
             false
     end;
-%% TODO: fun, etc...
+%% find_var_subst(B0, [{{'fun',_,{clauses,Cs1}},{'fun',L,{clauses,Cs2}}}|T])
+%%   when length(Cs1) == length(Cs2) ->
+%%     %% Make the patterns in Cs2 use the same variable names as in Cs1,
+%%     %% then see if the guards and bodies are equal up to renaming.
+%%     {Ps10,Gs1,Bs1} = unzip_clauses(Cs1),
+%%     {Ps20,Gs2,Bs2} = unzip_clauses(Cs2),
+%%     [Ps1,Ps2] = lists:map(fun lists:flatten/1, [Ps10,Ps20]),
+%%     Es1 = lists:flatten(Gs1 ++ Bs1),
+%%     Es2 = lists:flatten(Gs2 ++ Bs2),
+%%     if length(Ps1) == length(Ps2) andalso
+%%        length(Es1) == length(Es2) ->
+%%             case find_var_subst(B0, lists:zip(Ps1,Ps2)) of
+%%                 {ok,Ss} ->
+%%                     Sd = dict:from_list(Ss),
+%%                     io:fwrite("S: ~p~n",[dict:to_list(Sd)]),
+%%                     Paired = lists:zipwith(fun (E1,E2) -> {E1, subst(Sd,E2)} end,
+%%                                            Es1, Es2),
+%%                     io:fwrite("Paired: ~p~n",[Paired]),
+%%                     find_var_subst(B0, Paired ++ T);
+%%                 _ -> false
+%%             end;
+%%        true -> false
+%%     end;
+%% TODO: more stuff
 find_var_subst(B, [{E1,E2}|T]) ->
     %% If two expressions have different types then there can't be a
     %% renaming.
     T1 = erl_syntax:type(E1),
     T2 = erl_syntax:type(E2),
-    io:fwrite("r fallthrough: B=~p, ~p,~p~n ~p~n ~p~n",[B,T1,T2,E1,E2]),
+    io:fwrite("r fallthrough: ~p,~p~n ~p~n ~p~n",[T1,T2,E1,E2]),
     case T1 == T2 of
         true ->
             %% XXX: Fill in all supported expression types here. This
             %% is here because the function is not completed yet.
-            case lists:member(T1,
-                              [integer,float,atom,string,char,nil,
-                               variable,underscore,application,case_expr,
-                               list,infix_expr,prefix_expr,tuple,
-                               implicit_fun,if_expr]) of
-                true -> true
-            end,
+            true = lists:member(T1,
+                                [integer,float,atom,string,char,nil,
+                                 variable,underscore,application,case_expr,
+                                 list,infix_expr,prefix_expr,tuple,
+                                 implicit_fun,if_expr
+                                %% ,fun_expr
+                                ]),
             false;
         _ ->
             %% Different types. There can't possibly be a renaming.
@@ -893,3 +919,18 @@ renaming11_test() ->
 
 renaming12_test() ->
     false = is_renaming(sets:new(), read("{X,Y,Z}"), read("{Z,Y,X}")).
+
+renaming13_test() ->
+    true = is_renaming(sets:new(),
+                       read("fun (X) -> X * 100 end"),
+                       read("fun (Y) -> Y * 100 end")).
+
+renaming14_test() ->
+    true = is_renaming(sets:new(),
+                       read("fun (X0,Y0) -> X0+Y0 end"),
+                       read("fun (Y1,X1) -> Y1+X1 end")).
+
+renaming15_test() ->
+    false = is_renaming(sets:new(),
+                        read("fun (X0,Y0) -> [X0|Y0] end"),
+                        read("fun (Y1,X1) -> [X1|Y1] end")).
