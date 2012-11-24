@@ -278,59 +278,91 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
     io:fwrite("Fun: ~p~n", [Fun0]),
     L = plug(Funterm, R),
     FV = scp_expr:free_variables(Env0#env.bound, L),
-    %% TODO: second try to find a homeomorphic embedding
-
-    Renaming = scp_expr:find_renaming(Env0, L),
-    io:fwrite("Renaming: ~p~n", [Renaming]),
-
-    case Renaming of
+    %% First try to find a renaming.
+    case scp_expr:find_renaming(Env0, L) of
         {ok,Fname} ->
             %% L is a renaming of an old expression.
             io:fwrite("Folding. Fname=~p, FV=~p~n",[Fname,FV]),
             Expr={'call',Line,{atom,Line,Fname},[{var,Line,X} || X <- FV]},
             {Env0#env{found=[Fname|Env0#env.found]},Expr};
         _ ->
-            %% Neither a renaming nor an embedding.
-            {Env1,Fname} = scp_expr:gensym(Env0, Env0#env.name),
-            {Env2,Fun} = scp_expr:alpha_convert(Env1, Fun0),
-            %% Remember that Fname came from the expression L.
-            Env3 = Env2#env{ls = [{Fname,L}|Env2#env.ls]},
-            io:fwrite("Before: ~p~nAfter: ~p~n", [Fun0,Fun]),
-            %% Drive the fun in the original context. If the context is a
-            %% call_ctxt then this might do inlining.
-            {Env4,E} = drive(Env3, Fun, R),
-            io:fwrite("After driving the fun: ~p~n", [E]),
-            {Env5,S} = scp_expr:fresh_variables(Env4, dict:new(), FV),
-            %% The line numbers are probably going to be a bit wrong.
-            case lists:member(Fname, Env5#env.found) of
-                false ->
-                    %% Fname was never used in E, so there is no need
-                    %% to residualize a new function. This basically
-                    %% inlines what would otherwise be a new function.
-                    %% Need to forget about Fname, because otherwise
-                    %% it might be used afterwards.
-                    Env6 = Env5#env{ls = lists:keydelete(Fname, 1, Env5#env.ls)},
-                    {Env6,E};
+            %% Next try to find a homeomorphic embedding.
+            case scp_generalize:find_homeomorphic_embeddings(Env0, L) of
+                {ok,Embeddings} ->
+                    io:fwrite("The whistle! ~p~n", [Embeddings]),
+                    io:fwrite("L: ~p~n", [L]),
+                    Refl = lists:filter(
+                             fun ({_Fname,OldExpr}) ->
+                                     scp_generalize:whistle(L, OldExpr)
+                             end,
+                             Embeddings),
+                    io:fwrite("Refl: ~p~n", [Refl]),
+                    case Refl of
+                        [] ->
+                            %% Generalize against the old expression.
+                            [{_,OldExpr}|_] = Embeddings,
+                            generalize(Env0, L, OldExpr);
+                        [{Fname,_OldExpr}|_] ->
+                            %% Upwards generalization.
+                            {Env1,G} = scp_expr:gensym(Env0, "Intermediate"),
+                            Env2 = Env1#env{w=[{Fname,L}|Env1#env.w]},
+                            io:fwrite("Upwards generalization. W=~p~n",[Env2#env.w]),
+                            {Env2,{var,Line,G}}
+                    end;
                 _ ->
-                    Head = [scp_expr:subst(S, {var,Line,X}) || X <- FV],
-                    %% io:fwrite("S: ~p~n", [S]),
-                    %% io:fwrite("Free variables in ~p: ~w~n", [L,FV]),
-                    %% io:fwrite("Head: ~p~n",[Head]),
-                    Guard = [],
-                    %% io:fwrite("E: ~p~n",[E]),
-                    Body = scp_expr:subst(S, E),
-                    NewFun0 = {'fun',Line,
-                               {clauses,
-                                [{clause,Line,Head,Guard,[Body]}]}},
-                    NewTerm = {'call',Line,{atom,Line,Fname},
-                               [{var,Line,X} || X <- FV]},
-                    io:fwrite("NewFun0: ~p~n",[NewFun0]),
-                    io:fwrite("NewTerm: ~p~n",[NewTerm]),
-                    {Env6,NewFun} = scp_expr:alpha_convert(Env5, NewFun0),
-                    io:fwrite("NewFun: ~p~n",[NewFun]),
-                    %% This letrec will become a top-level function later.
-                    Letrec = scp_expr:make_letrec(Line,[{Fname,length(FV),NewFun}],[NewTerm]),
-                    {Env6,Letrec}
+                    %% Neither a renaming nor an embedding.
+                    {Env1,Fname} = scp_expr:gensym(Env0, Env0#env.name),
+                    {Env2,Fun} = scp_expr:alpha_convert(Env1, Fun0),
+                    %% Remember that Fname came from the expression L.
+                    Env3 = Env2#env{ls = [{Fname,L}|Env2#env.ls]},
+                    io:fwrite("Before: ~p~nAfter: ~p~n", [Fun0,Fun]),
+                    %% Drive the fun in the original context. If the context is a
+                    %% call_ctxt then this might do inlining.
+                    {Env4,E} = drive(Env3, Fun, R),
+                    io:fwrite("After driving the fun: ~p~n", [E]),
+                    {Env5,S} = scp_expr:fresh_variables(Env4, dict:new(), FV),
+                    %% The line numbers are probably going to be a bit wrong.
+                    io:fwrite("W? ~p ~p~n",[Fname, Env5#env.w]),
+                    case lists:keysearch(Fname, 1, Env5#env.w) of
+                        {value, {_, Expr}} ->
+                            %% TODO: check that this works
+                            io:fwrite("Upwards generalization. ~p~n",[Expr]),
+                            Env6 = Env0#env{seen_vars=Env5#env.seen_vars},
+                            generalize(Env6, L, Expr);
+                        _ ->
+                            case lists:member(Fname, Env5#env.found) of
+                                false ->
+                                    %% Fname was never used in E, so there is no need
+                                    %% to residualize a new function. This basically
+                                    %% inlines what would otherwise be a new function.
+                                    %% Need to forget about Fname, because otherwise
+                                    %% it might be used afterwards.
+                                    Env6 = Env5#env{ls = lists:keydelete(Fname, 1, Env5#env.ls)},
+                                    {Env6,E};
+                                _ ->
+                                    Head = [scp_expr:subst(S, {var,Line,X}) || X <- FV],
+                                    %% io:fwrite("S: ~p~n", [S]),
+                                    %% io:fwrite("Free variables in ~p: ~w~n", [L,FV]),
+                                    %% io:fwrite("Head: ~p~n",[Head]),
+                                    Guard = [],
+                                    %% io:fwrite("E: ~p~n",[E]),
+                                    Body = scp_expr:subst(S, E),
+                                    NewFun0 = {'fun',Line,
+                                               {clauses,
+                                                [{clause,Line,Head,Guard,[Body]}]}},
+                                    NewTerm = {'call',Line,{atom,Line,Fname},
+                                               [{var,Line,X} || X <- FV]},
+                                    io:fwrite("NewFun0: ~p~n",[NewFun0]),
+                                    io:fwrite("NewTerm: ~p~n",[NewTerm]),
+                                    {Env6,NewFun} = scp_expr:alpha_convert(Env5, NewFun0),
+                                    io:fwrite("NewFun: ~p~n",[NewFun]),
+                                    %% This letrec will become a top-level function later.
+                                    Letrec = scp_expr:make_letrec(Line,
+                                                                  [{Fname,length(FV),NewFun}],
+                                                                  [NewTerm]),
+                                    {Env6,Letrec}
+                            end
+                    end
             end
     end.
 
@@ -471,6 +503,40 @@ plug(Expr, [#tuple_ctxt{line=Line, done=Ds, todo=Ts}|R]) ->
     plug({tuple,Line,lists:reverse([Expr|Ds])++Ts}, R);
 plug(Expr, []) ->
     Expr.
+
+%% Generalization.
+generalize(Env0, E1, E2) ->
+    io:fwrite("gen: ~p ~p~n",[E1,E2]),
+    {Env1,Expr0,Subst0} = case scp_generalize:msg(Env0, E1, E2) of
+                              {_,{var,_,_},_} ->
+                                  scp_generalize:split(Env0, E1);
+                              X -> X
+                          end,
+    SplitVars = dict:fetch_keys(Subst0),
+    SplitVarsSet = sets:from_list(SplitVars),
+    %% Expr0 is a simpler version of E1.
+    Env2 = Env1#env{split_vars=SplitVars ++ Env1#env.split_vars,
+                    bound=sets:union(SplitVarsSet, Env1#env.bound)},
+    {Env3,Expr1} = drive(Env2, Expr0, []),
+    Env4 = Env3#env{bound=Env0#env.bound},
+    %% Drive the right-hand sides of the substitution, yielding a new
+    %% substitution.
+    SubstList = dict:to_list(Subst0),
+    {Env5,Rhss} = drive_list(Env4, fun drive/3, [Rhs||{_,Rhs}<-SubstList]),
+    Subst = dict:from_list(lists:zipwith(fun ({Lhs,_},Rhs) ->
+                                                 {Lhs,Rhs}
+                                         end,
+                                         SubstList, Rhss)),
+    %% Apply the new substitution to the driven simplification of E1.
+    %% The subexpressions of E1 and E1 itself has now been driven in
+    %% the empty context.
+    Expr = scp_expr:subst(Subst, Expr1),
+    %% The bindings going out is the union of the new bindings in Expr
+    %% and the split expressions.
+    Env = Env5#env{bound=sets:subtract(sets:union(Env3#env.bound, Env5#env.bound),
+                                       SplitVarsSet),
+                   split_vars=Env0#env.split_vars},
+    {Env, Expr}.
 
 %% EUnit tests.
 

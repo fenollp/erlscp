@@ -8,6 +8,8 @@
               w = [],
               ls = [],
               memo = [],
+              %% This contains the variables that were returned in a
+              %% substitution created by scp_generalize:split/2.
               split_vars = [],
               bound = sets:new(),
               %% Global and local functions. The keys are {Name,Arity}

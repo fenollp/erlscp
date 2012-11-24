@@ -26,6 +26,7 @@ form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
                       erl_syntax_lib:variables(Expr0)),
     Env1 = Env0#env{bound = sets:new(),
                     seen_vars = Seen,
+                    w=[], ls=[], found=[],
                     name = atom_to_list(Name)},
     {Env,Expr1} = scp_main:drive(Env1, Expr0, []),
     {Expr,Letrecs} = scp_expr:extract_letrecs(Expr1),

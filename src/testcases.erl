@@ -1,7 +1,11 @@
 -module(testcases).
 -export([to_utf8/1,
-         string_to_utf8/1,
-         ap3/3, sumsqs/1]).
+         %%string_to_utf8/1,
+         ap/2, ap/3, sumsqs/1,
+         rev/2, double/1,
+         map/2, flatten/1,
+         sum/1
+        ]).
 -include("scp.hrl").
 -compile({parse_transform, erlang_supercompiler}).
 
@@ -218,7 +222,7 @@ to_utf8(Code) -> to_utf8(Code, 4).
 ap([],Ys) -> Ys;
 ap([X|Xs],Ys) -> [X|ap(Xs,Ys)].
 
-ap3(Xs,Ys,Zs) ->
+ap(Xs,Ys,Zs) ->
     ap(ap(Xs,Ys),Zs).
 
 %% Tests like these should be made with quickcheck and should be in a
@@ -227,7 +231,7 @@ ap3(Xs,Ys,Zs) ->
 %%     X = [1,2,3],
 %%     Y = [a,b,c],
 %%     Z = [9,8,7],
-%%     Ap3 = ap3(X,Y,Z),
+%%     Ap3 = ap(X,Y,Z),
 %%     Ap3 = ap(ap(X,Y),Z),
 %%     Ap3 = ap(X,ap(Y,Z)),
 %%     Ap3 = X++ap(Y,Z),
@@ -249,11 +253,27 @@ flatten([]) ->
 flatten([Xs|Xss]) ->
     ap(Xs,flatten(Xss)).
 
-string_to_utf8(S) ->
-    flatten(map(fun to_utf8/1, S)).
+%% string_to_utf8(S) ->
+%%     flatten(map(fun to_utf8/1, S)).
 
 %% broken(Code) ->
 %%     map(fun (X) ->
 %%                 X * 100
 %%         end,
 %%         to_utf8(Code)).
+
+%% Requires the whistle.
+rev([],Ys) ->
+    Ys;
+rev([X|Xs],Ys) ->
+    rev(Xs, [X|Ys]).
+
+%% Tests upwards generalization.
+double(Xs) ->
+    ap(Xs, Xs).
+
+%% TODO: there is no improvement here, but scp_tidy should make sure
+%% that the residual program doesn't have case {Xs,Ys} of ...
+%% same_length([], []) -> true;
+%% same_length([X|Xs],[Y|Ys]) -> same_length(Xs,Ys);
+%% same_length(_,_) -> false.
