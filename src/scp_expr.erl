@@ -425,6 +425,8 @@ is_renaming(B, E1, E2) ->
         {ok,S} ->
             io:fwrite("is_renaming.~nE1: ~p~nE2: ~p~n", [E1,E2]),
             io:fwrite("S: ~p~n",[S]),
+            %% FIXME: for 'fun' to work, does this need to use a
+            %% subst() that does not check the scoping rules?
             io:fwrite("Afterwards: ~p~n", [subst(dict:from_list(S), E2)]),
             subst(dict:from_list(S), E2) == E2;
         _ ->
@@ -559,7 +561,7 @@ find_var_subst(B, [{E1,E2}|T]) ->
     %% renaming.
     T1 = erl_syntax:type(E1),
     T2 = erl_syntax:type(E2),
-    io:fwrite("r fallthrough: ~p,~p~n ~p~n ~p~n",[T1,T2,E1,E2]),
+    io:fwrite("r fallthrough: ~p,~p~n",[T1,T2]),
     case T1 == T2 of
         true ->
             %% XXX: Fill in all supported expression types here. This
@@ -587,12 +589,11 @@ find_var_subst(B, T, NewSubst) ->
             false
     end.
 
-
 unzip_clauses(Cs) ->
     lists:unzip3(lists:map(fun ({clause,_,P,G,B}) -> {P,G,B} end,
                            Cs)).
 
-%% Always terminates and is free of side-effects.
+%% Does the expression always terminate (and is free of side-effects)?
 terminates(Env, {var,_,N}) ->
     %% If a variable is in split_vars it could represent any kind of
     %% expression whatsoever. This would represent the guard in R8.
@@ -607,16 +608,28 @@ terminates(Env, {'fun',_,_}) -> true;
 %% TODO: make this stronger
 terminates(Env, _) -> false.
 
-%% Linearity and strictness.
-
-is_linear(Var, E) ->
+%% Is the variable N linear in E? It is if it's guaranteed that N will
+%% be evaluated at most once in E. E must have been alpha converted.
+%% XXX: what about patterns?
+is_linear(N, E) ->
     %% TODO
+    io:fwrite("is_linear ~p ~p~n",[N,E]),
+    %% lin(N, E) =< 1.
     true.
 
-is_strict(Var, E) ->
-    %% TODO
-    true.
+lin(N, {var,_,N}) ->
+    1;
+lin(_, {var,_,_}) ->
+    0.
 
+%% Is the variable N strict in E? In other words, is it guaranteed
+%% that N will be evaluated in E? E must have been alpha converted.
+%% XXX: what about patterns?
+is_strict(N, {var,_,N}) -> true;
+is_strict(N, E) ->
+    %% TODO
+    io:fwrite("is_strict ~p ~p~n",[N,E]),
+    true.
 
 %% Constant folding.
 apply_op(L, '+', {integer,_,I1}, {integer,_,I2}) ->
@@ -934,3 +947,12 @@ renaming15_test() ->
     false = is_renaming(sets:new(),
                         read("fun (X0,Y0) -> [X0|Y0] end"),
                         read("fun (Y1,X1) -> [X1|Y1] end")).
+
+linear0_test() ->
+    true = is_linear('X', read("1+X")).
+
+linear1_test() ->
+    true = is_linear('X', read("Y=X+Z, Y")).
+
+linear2_test() ->
+    false = is_linear('X', read("Y=X+X, Y")).
