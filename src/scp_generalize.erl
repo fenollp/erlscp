@@ -10,7 +10,7 @@
          msg/3]).
 -include("scp.hrl").
 
-%% Find old expressions which are homeomorphically embedded in Expr.
+%% Find old expressions that are homeomorphically embedded in Expr.
 find_homeomorphic_embeddings(Env, Expr) ->
     Xs = lists:filter(fun ({_FName,OldExpr}) ->
                               whistle(OldExpr, Expr)
@@ -29,10 +29,11 @@ whistle(E1, E2, InFun) ->
         lists:any(fun (E) -> whistle(E1, E, InFun) end,
                   dive(E2)).
 
-%% Extract all subexpressions except patterns and guards.
+%% Diving. Extract all subexpressions except patterns and guards.
 dive({clause,_,_,_,B}) -> B;
 dive(E) -> lists:flatten(subtrees(E)).
 
+%% Peeling matches subterms. Also known as coupling.
 peel(E1, E2, InFun) ->
     X = peel0(E1, E2, InFun),
     %%io:fwrite("peel ~p~n     ~p =>   ~p~n",[E1,E2,X]),
@@ -171,10 +172,11 @@ split_clauses(Env0, Line, Cs0) ->
                        Cs0, Bs),
     {Env1,Cs,S}.
 
-%% The most specific generalization. Create a new expression and a
-%% substitution. The differences between the expressions are replaced
-%% by variables. Applying the substitution to the expression gives you
-%% e1 back. Returns the same sort of thing that split/2 returns.
+%% The most specific generalization (special one-substitution
+%% edition). Create a new expression and a substitution. The
+%% differences between the expressions are replaced by variables.
+%% Applying the substitution to the expression gives you e1 back.
+%% Returns the same sort of thing that split/2 returns.
 msg(Env, E1, E2) ->
     {Env1,E,S} = msg(Env, scp_expr:free_variables(Env#env.bound, E1), E1, E2),
     io:fwrite("msg ~p~n    ~p =>~n ~p~nS: ~p~n",[E1,E2,E,S]),
@@ -206,13 +208,17 @@ msg(Env0, Infvs, {call,L,F={atom,_,N},As1},{call,_,{atom,_,N},As2})
     {Env3,{call,L,F,As},S};
 %% msg(Env0, Infvs, {'case',L,E1,Cs1},{'case',_,E2,Cs2})
 %%   when length(Cs1) == length(Cs2) ->
+%%     %% The two cases may be the same, except alpha conversion has
+%%     %% removed the exact similarity. Try to make Cs2 use the names
+%%     %% from Cs1 first.
 %%     ;
-%% TODO: more expression types ('case' is very important!)
-msg(Env0, Infvs, E1, _E2) ->
-    msg_default(Env0, Infvs, E1).
+%% TODO: more expression types
+msg(Env0, Infvs, E1, E2) ->
+    msg_default(Env0, Infvs, E1,E2).
 
-msg_default(Env0, Infvs, E1) ->
+msg_default(Env0, Infvs, E1,E2) ->
     %% Just make a variable or a function that wraps all of E1.
+    io:fwrite("msg_default~nE1=~p~nE2=~p~n",[E1,E2]),
     {Env1,G} = scp_expr:gensym(Env0, "V"),
     Line = erl_syntax:get_pos(E1),
     case scp_expr:free_variables(Env0#env.bound, E1)--Infvs of
