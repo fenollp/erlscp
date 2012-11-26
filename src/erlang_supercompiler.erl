@@ -28,8 +28,9 @@ form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
                     seen_vars = Seen,
                     w=[], ls=[], found=[],
                     name = atom_to_list(Name)},
-    {Env,Expr1} = scp_main:drive(Env1, Expr0, []),
-    {Expr,Letrecs} = scp_expr:extract_letrecs(Expr1),
+    {Env2,Expr1} = {Env1,Expr0}, %%scp_expr:alpha_convert(Env1, Expr0),
+    {Env,Expr2} = scp_main:drive(Env2, Expr1, []),
+    {Expr,Letrecs} = scp_expr:extract_letrecs(Expr2),
     Functions = [ scp_expr:fun_to_function(Expr, Name, Arity) ||
                     {Name, Arity, Expr} <- Letrecs ],
     Function = scp_expr:fun_to_function(Expr, Name, Arity),
