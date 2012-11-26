@@ -12,20 +12,12 @@
 
 -include("scp.hrl").
 
+%%-define(DEBUG(P,A), (io:fwrite(P,A))).
+-define(DEBUG(P,A), (false)).
 
 %% List the variables used in a pattern.
-%% TODO: see if erl_syntax_lib:variables(Expr) works just as well
 pattern_variables(Expr) ->
-    Vars = erl_syntax_lib:variables(Expr),
-    sets:to_list(Vars).
-
-%% A pattern is simple if no variable appears more than once and there
-%% are no match expressions.
-%% is_simple_pattern(P) ->
-%%     Vars = scp_expr:variables(P),
-%%     Uniq = gb_sets:from_list(Vars),
-%%     length(Vars) == gb_sets:size(Uniq) andalso
-%%         scp_expr:matches(P) == [].
+    sets:to_list(erl_syntax_lib:variables(Expr)).
 
 guard_variables(G) ->
     erl_syntax_lib:variables({clause,1,[],G,[{nil,1}]}).
@@ -36,7 +28,7 @@ guard_variables(G) ->
 %% will be taken. Only works with constant expressions (including the
 %% empty tuple) and patterns that are constants or a single variable.
 find_matching_const(Bs, E, Cs0) ->
-    %%io:fwrite("find_matching_const(~p, ~p)~n => ~p~n",[E,Cs,fmcc(E, Cs)]),
+    %%?DEBUG("find_matching_const(~p, ~p)~n => ~p~n",[E,Cs,fmcc(E, Cs)]),
     Cs = impossible(Bs, E, Cs0),                %also handles variables
     fmcc(E, Cs).
 
@@ -92,13 +84,14 @@ geval(E) -> E.
 %% Each clause may also have a variable name associated with it, to
 %% which the extracted expression should be bound.
 simplify(Bs, E0, Cs0) ->
-    io:fwrite("simplify E0=~p~n Cs0=~p~n",[E0,Cs0]),
+    ?DEBUG("simplify E0=~p~n Cs0=~p~n",[E0,Cs0]),
     {E1,Cs1} = trivial(E0, Cs0),
-    io:fwrite("trivial E1=~p~n Cs1=~p~n",[E1,Cs1]),
-    Cs2 = impossible(Bs, E1, Cs1),
-    io:fwrite("impossible ~n Cs=~p~n",[Cs2]),
+    ?DEBUG("trivial E1=~p~n Cs1=~p~n",[E1,Cs1]),
+    %%Cs2 = impossible(Bs, E1, Cs1),
+    Cs2 = Cs1,
+    ?DEBUG("impossible ~n Cs=~p~n",[Cs2]),
     {E3,Rhs,SCs} = common(Bs, E1, Cs2),
-    io:fwrite("common E=~p ~n SCs=~p~n",[E3,SCs]),
+    ?DEBUG("common E=~p ~n SCs=~p~n",[E3,SCs]),
     {E3,Rhs,SCs}.
 
 
@@ -210,7 +203,7 @@ common(_, E0, Cs, []) ->
 common_try(Bs, Path, E0, Cs) ->
     case path_ref(Path, E0) of
         {ok,Rhs} ->
-            io:fwrite("Path: ~p, Rhs: ~p~n",[Path,Rhs]),
+            ?DEBUG("Path: ~p, Rhs: ~p~n",[Path,Rhs]),
             %% TODO: if Rhs is a variable and it is used in a pattern
             %% more than once, then find all occurences in the
             %% patterns and see if, for each one, the same occurence
@@ -219,12 +212,12 @@ common_try(Bs, Path, E0, Cs) ->
             case lists:member(false,[Rhs|SCs]) of
                 true ->
                     %% No improvements on this path.
-                    io:fwrite("Fail. SCs: ~p~n",[SCs]),
+                    ?DEBUG("Fail. SCs: ~p~n",[SCs]),
                     false;
                 _ ->
-                    io:fwrite("Success. Rhs: ~p, SCs: ~p~n",[Rhs,SCs]),
+                    ?DEBUG("Success. Rhs: ~p, SCs: ~p~n",[Rhs,SCs]),
                     E = path_elim(Path, E0),
-                    io:fwrite("E: ~p~n",[E]),
+                    ?DEBUG("E: ~p~n",[E]),
                     {E,Rhs,SCs}
             end;
         _ ->
@@ -240,7 +233,7 @@ reconcile(_Bs, _Path, _Rhs, C={clause,_,[{var,_,'_'}],_,_}) ->
     {C,nothing};
 reconcile(Bs, Path, Rhs, C={clause,L,[P0],G,B}) ->
     PExpr = path_ref(Path, P0),
-    io:fwrite("PExpr: ~p~n",[PExpr]),
+    ?DEBUG("PExpr: ~p~n",[PExpr]),
     case [Rhs|PExpr] of
         [_|{ok,{var,_,'_'}}] ->
             %% This part of the pattern doesn't matter.
@@ -281,7 +274,7 @@ reconcile(Bs, Path, Rhs, C={clause,L,[P0],G,B}) ->
         %% that can't possibly match.
         _ ->
             %% There was no way to reconcile Rhs and PExpr.
-            io:fwrite("Irreconcilable:~n ~p~n ~p~n",[Rhs,PExpr]),
+            ?DEBUG("Irreconcilable:~n ~p~n ~p~n",[Rhs,PExpr]),
             false
     end.
 
@@ -290,13 +283,13 @@ reconcile(Bs, Path, Rhs, C={clause,L,[P0],G,B}) ->
 %% occurences of N in G0 with Rhs.
 reconcile_guard(Rhs, N, {clause,L,[P0],G0,B}, P) ->
     %% FIXME: must check if Rhs is a variable in split_vars
-    io:fwrite("Nonlinear variable: ~p in ~p or ~p~n", [N,P0,G0]),
+    ?DEBUG("Nonlinear variable: ~p in ~p or ~p~n", [N,P0,G0]),
     case erl_lint:is_guard_test(Rhs) of
         true ->
-            io:fwrite("Replace with ~p.~n",[Rhs]),
+            ?DEBUG("Replace with ~p.~n",[Rhs]),
             S = dict:from_list([{N, Rhs}]),
             G = [[scp_expr:subst(S,X) || X <- Xs] || Xs <- G0],
-            io:fwrite("Afterwards: ~p~n", [{{clause,L,[P],G,B},N}]),
+            ?DEBUG("Afterwards: ~p~n", [{{clause,L,[P],G,B},N}]),
             {{clause,L,[P],simplify_guard_seq(G),B},N};
         _ ->
             false
@@ -381,18 +374,18 @@ paths_test() ->
     Paths = paths(E),
     Values = [path_ref(P,E) || P <- Paths],
     Elims = [path_elim(P,E) || P <- Paths],
-    io:fwrite("Values: ~p~n", [Values]),
-    io:fwrite("Elims: ~p~n", [Elims]),
-    io:fwrite("Paths: ~p~n",[Paths]).
+    ?DEBUG("Values: ~p~n", [Values]),
+    ?DEBUG("Elims: ~p~n", [Elims]),
+    ?DEBUG("Paths: ~p~n",[Paths]).
 
 common_test() ->
     {'case',_,E0,Cs} = scp_expr:read("case {X,Y} of {_,[]} -> 1; {X1,[X2|X3]} -> 2 end"),
     {E,Rhs,SCs} = common(sets:new(), E0, Cs),
-    io:fwrite("E: ~p~nRhs: ~p~nSCs: ~p~n", [E,Rhs,SCs]),
+    ?DEBUG("E: ~p~nRhs: ~p~nSCs: ~p~n", [E,Rhs,SCs]),
     true = Rhs =/= nothing.
 
 reconcile_test() ->
     P = {tuple,1,[{var,1,'_'}]},
     C0 = {clause,1,[P],[],[{nil,1}]},
     {C,nothing} = reconcile(sets:new(), [1], {var,1,'X'}, C0),
-    io:fwrite("C: ~p~n",[C]).
+    ?DEBUG("C: ~p~n",[C]).
