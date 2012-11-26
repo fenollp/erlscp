@@ -325,7 +325,6 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
                     io:fwrite("W? ~p ~p~n",[Fname, Env5#env.w]),
                     case lists:keysearch(Fname, 1, Env5#env.w) of
                         {value, {_, Expr}} ->
-                            %% TODO: check that this works
                             io:fwrite("Upwards generalization. ~p~n",[Expr]),
                             Env6 = Env0#env{seen_vars=Env5#env.seen_vars},
                             generalize(Env6, L, Expr);
@@ -394,6 +393,8 @@ drive_const_case(Env0, E, Ctxt=[CR=#case_ctxt{clauses=Cs0}|R]) ->
             build(Env0, E, [CR#case_ctxt{clauses=Cs}|R])
     end.
 
+%% FIXME: this should not do any more than implement the drive let rule.
+%% Any other improvments should be in a build rule.
 drive_constructor_case(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0, line=Line}|R]) ->
     case scp_pattern:simplify(Env0#env.bound, E0, Cs0) of
         {_,_,[]} ->
@@ -506,12 +507,14 @@ plug(Expr, []) ->
 
 %% Generalization.
 generalize(Env0, E1, E2) ->
-    io:fwrite("gen: ~p ~p~n",[E1,E2]),
+    io:fwrite("gen: ~p ~n    ~p~n",[E1,E2]),
     {Env1,Expr0,Subst0} = case scp_generalize:msg(Env0, E1, E2) of
                               {_,{var,_,_},_} ->
+                                  io:fwrite("splitting instead~n"),
                                   scp_generalize:split(Env0, E1);
                               X -> X
                           end,
+    io:fwrite("Expr0: ~p~nSubst0: ~p~n",[Expr0,dict:to_list(Subst0)]),
     SplitVars = dict:fetch_keys(Subst0),
     SplitVarsSet = sets:from_list(SplitVars),
     %% Expr0 is a simpler version of E1.
@@ -530,6 +533,7 @@ generalize(Env0, E1, E2) ->
     %% Apply the new substitution to the driven simplification of E1.
     %% The subexpressions of E1 and E1 itself has now been driven in
     %% the empty context.
+    io:fwrite("Expr1: ~p~nSubst: ~p~n",[Expr1,dict:to_list(Subst)]),
     Expr = scp_expr:subst(Subst, Expr1),
     %% The bindings going out is the union of the new bindings in Expr
     %% and the split expressions.
