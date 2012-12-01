@@ -12,7 +12,7 @@
          matches/1,
          fresh_variables/3, gensym/2,
          alpha_convert/2,
-         make_letrec/3, extract_letrecs/1,
+         make_letrec/3, extract_letrecs/1, letrec_destruct/1,
          find_renaming/2,
          terminates/2, is_linear/2, is_strict/2,
          apply_op/4, apply_op/3]).
@@ -383,12 +383,8 @@ extract_letrecs(E0,Ls) ->
     {E1,Ls0} = extrecs_1(E0,Ls),
     E = erl_syntax:revert(E1),
     {E,Ls0}.
-extrecs_1({'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, Ls0) ->
-    {cons,_,{tuple,_,Bs0},{tuple,_,Body0}} = Arg,
-    %Bs1 = [{Name,Arity,Fun} || {tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]} <- Bs0],
-    Bs1 = lists:map(fun ({tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]}) ->
-                            {Name,Arity,Fun}
-                    end, Bs0),
+extrecs_1(E={'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, Ls0) ->
+    {Bs1,Body0} = letrec_destruct(E),
     %% Extract letrecs from the funs
     {Bs,Ls1} = lists:mapfoldl(fun ({Name,Arity,Fun0},Ls00) ->
                                       {Fun,Ls01} = extract_letrecs(Fun0,Ls00),
@@ -401,6 +397,15 @@ extrecs_1({'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, Ls0) ->
     {E1,Bs++Ls2};
 extrecs_1(E,Ls) ->
     erl_syntax_lib:mapfold_subtrees(fun extrecs_1/2, Ls, E).
+
+%% Returns the bindings and the body a letrec.
+letrec_destruct({'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}) ->
+    {cons,_,{tuple,_,Bs0},{tuple,_,Body}} = Arg,
+    %Bs1 = [{Name,Arity,Fun} || {tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]} <- Bs0],
+    Bs1 = lists:map(fun ({tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]}) ->
+                            {Name,Arity,Fun}
+                    end, Bs0),
+    {Bs1,Body}.
 
 %% Renamings.
 
