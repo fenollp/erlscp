@@ -81,7 +81,12 @@ make_let(Line, [Lhs|Lhss], [Rhs|Rhss], Body0) ->
     {call,Line,Fun,[Rhs]};
 make_let(_, [], [], Body) -> Body.
 
-%% Make a function call, but try some simplifications first.
+%% Make a function call, but try some simplifications first and handle
+%% the artificial constructor expressions.
+make_call(Line, {constructor,L,cons}, [H,T]) ->
+    {cons,L,H,T};
+make_call(Line, {constructor,L,tuple}, As) ->
+    {tuple,L,As};
 make_call(Line, {'atom',_,element}, [{integer,_,I},{tuple,_,Es}])
   when I > 0, I =< length(Es) ->
     %% Need to residualize the rest of Es for effect.
