@@ -5,6 +5,8 @@
 
 -module(scp_pattern).
 -export([pattern_variables/1,
+         find_constructor_clause/3,
+         partition/3,
          find_matching_const/3,
          simplify/3,
          simplify_guard_seq/1,
@@ -15,12 +17,148 @@
 %%-define(DEBUG(P,A), (io:fwrite(P,A))).
 -define(DEBUG(P,A), (false)).
 
+
 %% List the variables used in a pattern.
 pattern_variables(Expr) ->
     sets:to_list(erl_syntax_lib:variables(Expr)).
 
 guard_variables(G) ->
     erl_syntax_lib:variables({clause,1,[],G,[{nil,1}]}).
+
+%% E is a constructor and Cs0 is clauses from a case expression. The
+%% job is to find the clause that matches the constructor and return
+%% the bindings needed for that clause. If it finds a matching clause
+%% it returns {ok,Lhss,Rhss,Body}.
+find_constructor_clause(Bs, E={cons,L,H,T},
+                        [{clause,_,[{cons,_,LhsH={var,_,NH},LhsT={var,_,NT}}],[],Body}|Cs])
+  when NH =/= NT->
+    case sets:is_element(NH, Bs) orelse sets:is_element(NT, Bs) of
+        false ->
+            {ok,[LhsH,LhsT],[H,T],Body};
+        _ -> find_constructor_clause(Bs, E, Cs)
+    end;
+find_constructor_clause(Bs, E={cons,L,H,T}, [_|Cs]) ->
+    find_constructor_clause(Bs, E, Cs);
+%% TODO: handle tuples and patterns with some constants, and guards
+find_constructor_clause(_, _, _) ->
+    false.
+
+%% Partitions the function clauses and arguments into simple variables
+%% and patterns. The simple variables from the clauses can make a
+%% (classic) let expression and the rest must make a case expression.
+%% Must not be clever about the function arguments.
+%% Returns {ok,Lhss,Rhss,E,Cs}.
+partition(Line, Cs0, As0) ->
+    io:fwrite("partition~n Cs0=~p~n As0=~p~n",[Cs0,As0]),
+    Arity = length(As0),
+    %% Annotate the clauses with a list of used variables (includes
+    %% multiple occurences).
+    ACs = lists:map(fun ({clause,L,Ps,G,B}) ->
+                            Vs = lists:flatmap(fun scp_expr:variables/1,
+                                               Ps ++ lists:flatten(G)),
+                            {aclause,L,Ps,G,B,Vs}
+                    end, Cs0),
+    %% For every argument, check if the corresponding pattern always
+    %% is a simple variable.
+    Ns = lists:flatmap(
+           fun (N) ->
+                   Ok = lists:all(
+                          fun ({aclause,_,Ps,_,_,Vs}) ->
+                                  case lists:nth(N, Ps) of
+                                      {var,_,'_'} ->
+                                          true;
+                                      {var,_,V} ->
+                                          not lists:member(V, lists:delete(V,Vs));
+                                      _ -> false
+                                  end
+                          end, ACs),
+                   case Ok of
+                       true -> [N];
+                       _ -> []
+                   end
+           end, lists:seq(1, Arity)),
+    io:fwrite("Ns = ~p~n",[Ns]),
+    %% Pick a name for each simple variable.
+    Lhss = lists:map(
+             fun (N) ->
+                     Vars = lists:flatmap(
+                              fun ({clause,_,Ps,_,_}) ->
+                                      case lists:nth(N, Ps) of
+                                          {var,_,'_'} -> [];
+                                          V={var,_,_} -> [V];
+                                          _ -> []
+                                      end
+                              end,
+                              Cs0),
+                     case Vars of
+                         [Var|_] -> Var;
+                         [] -> '_'
+                     end
+             end, Ns),
+    %% Pick out the corresponding right-hand sides.
+    Rhss = lists:map(fun (N) -> lists:nth(N, As0) end, Ns),
+    %% The case scrutinee is whatever is left of the arguments.
+    E = remove_exprs(Line, Ns, As0),
+    %% The simple variables are now removed from the clauses and the
+    %% bodies are modified to use the names from Lhss.
+    io:fwrite("Lhss=~p Rhss=~p E=~p~n",[Lhss,Rhss,E]),
+    Cs = update_clauses(Cs0, Ns, Lhss),
+    io:fwrite("Cs=~p~n",[Cs]),
+    {ok,Lhss,Rhss,E,Cs}.
+
+%% For each N in Ns: remove the Nth element from As0. Construct a new
+%% expression suitable as a scrutinee.
+remove_exprs(Line, Ns, As0) ->
+    Es = lists:flatmap(fun ({N,A}) ->
+                               case lists:member(N, Ns) of
+                                   false -> [A];
+                                   _ -> []
+                               end
+                       end,
+                       lists:zip(lists:seq(1, length(As0)),
+                                 As0)),
+    exprs_to_expr(Line, Es).
+
+exprs_to_expr(Line, []) -> {nil,Line};
+exprs_to_expr(Line, [X]) -> X;
+exprs_to_expr(Line, Xs) -> {tuple,Line,Xs}.
+
+%% Update the clause so that pattern N is removed and the variable Lhs
+%% is used instead of the removed variable.
+update_clauses(Cs0, Ns, Lhss) ->
+    %% Update the clauses to use the variables from Lhss and mark
+    %% patterns for removal (replace them with []).
+    Cs = update_clauses1(Cs0, Ns, Lhss),
+    lists:map(fun ({clause,L,Ps0,G,B}) ->
+                      Ps1 = lists:filter(fun ({atom,-1,remove}) -> false;
+                                             (_) -> true
+                                         end, Ps0),
+                      %% If the scrutinee must become a tuple, then so
+                      %% must the patterns.
+                      Ps = [exprs_to_expr(L, Ps1)],
+                      {clause,L,Ps,G,B}
+              end, Cs).
+update_clauses1(Cs, [], []) -> Cs;
+update_clauses1(Cs0, [N|Ns], [Lhs={var,_,NewName}|Lhss]) ->
+    Cs = lists:map(
+           fun ({clause,L,Ps0,G,B}) ->
+                   {var,_,OldName} = lists:nth(N, Ps0),
+                   %% Mark the pattern for removal.
+                   Ps = lists:sublist(Ps0, 1, N-1) ++ [{atom,-1,remove}] ++
+                       lists:sublist(Ps0, N+1, length(Ps0)),
+                   C = {clause,L,Ps,G,B},
+                   case OldName of
+                       '_' -> C;
+                       NewName -> C;
+                       _ ->
+                           %% This clause used a different variable
+                           %% name.
+                           io:fwrite("Use a new name: ~p => ~p~n",[OldName,Lhs]),
+                           S = dict:from_list([{OldName,Lhs}]),
+                           scp_expr:subst(S, C)
+                   end
+           end, Cs0),
+    update_clauses1(Cs, Ns, Lhss).
 
 %% Go over the list of clauses left to right and return the clauses
 %% that could match the constant E. Each clause is the tuple
@@ -87,8 +225,8 @@ simplify(Bs, E0, Cs0) ->
     ?DEBUG("simplify E0=~p~n Cs0=~p~n",[E0,Cs0]),
     {E1,Cs1} = trivial(E0, Cs0),
     ?DEBUG("trivial E1=~p~n Cs1=~p~n",[E1,Cs1]),
-    %%Cs2 = impossible(Bs, E1, Cs1),
-    Cs2 = Cs1,
+    Cs2 = impossible(Bs, E1, Cs1),
+    %%Cs2 = Cs1,
     ?DEBUG("impossible ~n Cs=~p~n",[Cs2]),
     {E3,Rhs,SCs} = common(Bs, E1, Cs2),
     ?DEBUG("common E=~p ~n SCs=~p~n",[E3,SCs]),
