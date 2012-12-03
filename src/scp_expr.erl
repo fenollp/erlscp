@@ -6,7 +6,7 @@
 -module(scp_expr).
 -export([read/1,
          list_to_block/2, make_block/3, result_exp/1,
-         make_case/3, make_if/2, make_call/3,
+         make_case/3, make_if/2, make_call/3, make_let/4,
          function_to_fun/1, fun_to_function/3,
          variables/1, free_variables/2, subst/2,
          matches/1,
@@ -73,16 +73,24 @@ make_case(Line, E, Cs0) ->
 make_if(Line, Cs0) ->
     {'if',Line,Cs0}.
 
+make_let(Line, [Lhs|Lhss], [Rhs|Rhss], Body0) ->
+    %% XXX: this assumes that the left hand sides do not contain
+    %% repeated variables.
+    Body = make_let(Line, Lhss, Rhss, Body0),
+    Fun = {'fun',Line,{clauses,[{clause,Line,[Lhs],[],Body}]}},
+    {call,Line,Fun,[Rhs]};
+make_let(_, [], [], Body) -> Body.
+
 %% Make a function call, but try some simplifications first.
-make_call(Line, {'atom',L,element}, [{integer,_,I},{tuple,_,Es}])
+make_call(Line, {'atom',_,element}, [{integer,_,I},{tuple,_,Es}])
   when I > 0, I =< length(Es) ->
     %% Need to residualize the rest of Es for effect.
     Rest = lists:sublist(Es, 1, I - 1) ++
         lists:sublist(Es, I + 1, length(Es)),
-    list_to_block(L, Rest ++ [lists:nth(I, Es)]);
-make_call(Env, {'atom',L,hd}, [{cons,_,H,T}]) ->
+    list_to_block(Line, Rest ++ [lists:nth(I, Es)]);
+make_call(Line, {'atom',_,hd}, [{cons,_,H,T}]) ->
     %% Residualize T for effect.
-    make_block(L, T, H);
+    make_block(Line, T, H);
 make_call(Line,Expr,Args) ->
     {call,Line,Expr,Args}.
 
@@ -226,6 +234,10 @@ ac(Env0,S0,{cons,L,A0,B0}) ->
 ac(Env0,S0,{tuple,L,Es0}) ->
     {Env,S,Es} = ac_list(Env0,S0,Es0),
     {Env,S,{tuple,L,Es}};
+
+ac(Env0,S0,{record_field,L,R0,F0}) ->
+    {Env,S,[R,F]} = ac_list(Env0,S0,[R0,F0]),
+    {Env,S,{record_field,L,R,F}};
 
 ac(Env0,S0,{remote,L,M0,F0}) ->
     {Env,S,[M,F]} = ac_list(Env0,S0,[M0,F0]),
