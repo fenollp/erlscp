@@ -67,6 +67,10 @@ is_simple(_) -> false.
 result_exp({'block',_,_E0,E1}) -> E1;
 result_exp(E) -> E.
 
+%% Construct a case expression. R5 is simplified by not having to
+%% check for this simple case.
+make_case(Line, {nil,_}, [{clause,_,[{nil,_}],[],Body}]) ->
+    list_to_block(Line, Body);
 make_case(Line, E, Cs0) ->
     {'case',Line,E,Cs0}.
 
@@ -77,9 +81,10 @@ make_let(Line, [Lhs|Lhss], [Rhs|Rhss], Body0) ->
     %% XXX: this assumes that the left hand sides do not contain
     %% repeated variables.
     Body = make_let(Line, Lhss, Rhss, Body0),
-    Fun = {'fun',Line,{clauses,[{clause,Line,[Lhs],[],Body}]}},
+    Fun = {'fun',Line,{clauses,[{clause,Line,[Lhs],[],[Body]}]}},
     {call,Line,Fun,[Rhs]};
-make_let(_, [], [], Body) -> Body.
+make_let(Line, [], [], Body) ->
+    list_to_block(Line, Body).
 
 %% Make a function call, but try some simplifications first and handle
 %% the artificial constructor expressions.
