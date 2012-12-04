@@ -15,7 +15,7 @@ find_homeomorphic_embeddings(Env, Expr) ->
     Xs = lists:filter(fun ({_FName,OldExpr}) ->
                               whistle(OldExpr, Expr)
                       end,
-                      Env#env.ls ++ Env#env.memo),
+                      Env#env.ls),
     case Xs of
         [] -> false;
         _ -> {ok,Xs}

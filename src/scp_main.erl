@@ -8,13 +8,20 @@
 
 -include("scp.hrl").
 
+%% Contexts.
+-record(op_ctxt, {line, op, e1=hole, e2=hole}). %op(e1, e2)
+-record(op1_ctxt, {line, op}).              %op(<hole>)
+-record(call_ctxt, {line, args}).           %<hole>(args)
+-record(case_ctxt, {line, clauses}).        %case <hole> of clauses...
+-record(match_ctxt, {line, pattern}).       %pattern = <hole>
+
+%% Find the 'fun' expression for Name/Arity.
 lookup_function(Env, K={Name,Arity}) ->
-    %% TODO: use local here and recognize letrecs in drive
     case dict:find(K, Env#env.global) of
         {ok,Fun} ->
             {ok,Fun};
         _ ->
-            dict:find(K, Env#env.global)
+            dict:find(K, Env#env.local)
     end.
 
 head_variables(Head) ->
@@ -23,26 +30,39 @@ head_variables(Head) ->
 extend_bound(Env,Vars) ->
     Env#env{bound=sets:union(Env#env.bound, Vars)}.
 
+-define(IS_CONST_EXPR(E),
+        element(1,E)=='integer';
+            element(1,E)=='float';
+            element(1,E)=='atom';
+            element(1,E)=='string';
+            element(1,E)=='char';
+            element(1,E)=='nil';
+            element(1,E)=='tuple', element(3,E)==[]).
+
 %% The driving algorithm. The environment is used to pass information
 %% downwards and upwards the stack. R is the current context.
 
 %% Evaluation rules.
-drive(Env0, E={T,_,_}, R=[#case_ctxt{clauses=Cs0}|_])
-  when T=='integer'; T=='float'; T=='atom'; T=='string'; T=='char' -> %R1
-    drive_const_case(Env0, E, R);
-drive(Env0, E={nil,_}, R=[#case_ctxt{clauses=Cs0}|_]) -> %R1
-    drive_const_case(Env0, E, R);
-drive(Env0, E={tuple,_,[]}, R=[#case_ctxt{clauses=Cs0}|_]) -> %R1
-    drive_const_case(Env0, E, R);
+drive(Env0, E, Ctxt=[#case_ctxt{clauses=Cs0}|R]) when ?IS_CONST_EXPR(E) -> %R1
+    %% E is a constant. One of the case clauses should match the
+    %% constant exactly and have a true guard.
+    %% TODO: strings may be better treated as conses
+    case scp_pattern:find_matching_const(E, Cs0) of
+        [{yes,{clause,L,P,[],B}}] ->
+            drive(Env0, scp_expr:list_to_block(L, B), R);
+        _ ->
+            %% No clause matches the constant exactly.
+            build(Env0, E, Ctxt)
+    end;
 
-drive(Env0, E2={T,_,_}, Ctxt=[#op_ctxt{line=L, op=Op, e1=E1, e2=hole}|R])
-  when T=='integer'; T=='float'; T=='atom'; T=='string'; T=='char' -> %R2
+drive(Env0, E2, Ctxt=[#op_ctxt{line=L, op=Op, e1=E1, e2=hole}|R])
+  when ?IS_CONST_EXPR(E2) -> %R2
     case scp_expr:apply_op(L, Op, E1, E2) of
         {ok,V} -> drive(Env0, V, R);
         _ -> build(Env0, E2, Ctxt)
     end;
-drive(Env0, E1={T,_,_}, Ctxt=[#op1_ctxt{line=L, op=Op}|R])
-  when T=='integer'; T=='float'; T=='atom'; T=='string'; T=='char' -> %R2
+drive(Env0, E1, Ctxt=[#op1_ctxt{line=L, op=Op}|R])
+  when ?IS_CONST_EXPR(E1) -> %R2
     case scp_expr:apply_op(L, Op, E1) of
         {ok,V} -> drive(Env0, V, R);
         _ -> build(Env0, E1, Ctxt)
@@ -56,46 +76,95 @@ drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
         _ -> drive_BIF(Env0, E, R)
     end;
 drive(Env0, E={'fun',Lf,{function,G,Arity}}, R=[#call_ctxt{args=Args}|_])
-  when length(Args) == Arity -> %R3
+  when length(Args) == Arity ->                 %R3 alternative syntax
     drive(Env0, {'atom',Lf,G}, R);
 %% TODO: R3 for 'fun' in any context
 %% TODO: R3 for {remote,_,{atom,_,lists},{atom,_,flatten}} and so on.
 
-drive(Env0, E, R=[#case_ctxt{clauses=Cs0}|_])
-  when element(1,E) == 'cons'; element(1,E) == 'tuple';
-       element(1,E) == 'bin'; element(1,E) == 'record';
-       element(1,E) == 'op' -> %R4
-    drive_constructor_case(Env0, E, R);
+drive(Env0, E0={constructor,L,Cons},
+      Ctxt=[#call_ctxt{args=Args},#case_ctxt{clauses=Cs0}|R]) -> %R4
+    E = scp_expr:make_call(L, E0, Args),
+    io:fwrite("Known constructor in a case.~n~p~n~p~n",[E,Ctxt]),
+    case scp_pattern:find_constructor_clause(Env0#env.bound, E, Cs0) of
+        {ok,Lhss,Rhss,Body} ->
+            %% FIXME: if one Lhs was defined by every clause then it
+            %% can't really become a let, because it might be used
+            %% after the case expression. Maybe the code for blocks
+            %% can determine which names are live out?
+            drive(Env0, scp_expr:make_let(L, Lhss, Rhss, Body), R);
+        _ ->
+            %% Couldn't find a clause that simply matches the known
+            %% constructor.
+            build(Env0, E0, Ctxt)
+    end;
 
-drive(Env0, {'fun',Lf,{clauses,Cs0}}, [#call_ctxt{line=Lc,args=As}|R]) -> %R5
-    %% This is how inlining happens. The original rule uses a let, but
-    %% the equivalent rule for Erlang must use an alpha-converted case
-    %% (at least if the patterns for the arguments aren't simple).
-    %%    (fun (X,Y) -> X) (1,2).
-    %% => case {1,2} of {X,Y} -> X end.
-    %% FIXME: check that the arity matches
-    E = {tuple,Lc,As},
-    Cs = lists:map(fun ({clause,Line,H0,G0,B0}) ->
-                           {clause,Line,[{tuple,Line,H0}],G0,B0}
-                   end,
-                   Cs0),
-    {Env,Case} = scp_expr:alpha_convert(Env0, scp_expr:make_case(Lf,E,Cs)),
-    drive(Env, Case, R);
+drive(Env0, {'fun',_,{clauses,[{clause,_,[],[],Body}]}},
+      [#call_ctxt{line=L,args=[]}|R]) ->
+    %% Let with no bindings.
+    drive(Env0, scp_expr:list_to_block(L, Body), R);
+drive(Env0, {'fun',_,{clauses,[{clause,_,[{var,_,'_'}],[],Body0}]}},
+      [#call_ctxt{line=L,args=[Rhs]}|R]) ->
+    %% Let that ignores the result from Rhs.
+    drive(Env0, scp_expr:list_to_block(L, [Rhs|Body0]), R);
+drive(Env0, {'fun',_,{clauses,[{clause,_,[LhsV={var,_,Lhs}],[],Body0}]}},
+      [#call_ctxt{line=L,args=[Rhs]}|R]) ->     %R7/R8/R9
+    %% Let.
+    Body1 = scp_expr:list_to_block(L, Body0),
+    io:fwrite("let!!!~n Lhs=~p Rhs=~p Body=~p~n",[Lhs,Rhs,Body1]),
+    %% FIXME: Also ensure that Lhs is not used improperly in a pattern
+    %% or guard.
+    case scp_expr:terminates(Env0, Rhs)
+        orelse (scp_expr:is_linear(Lhs, Body1)
+                andalso scp_expr:is_strict(Lhs, Body1)) of
+        true ->
+            E = scp_expr:subst(dict:from_list([{Lhs,Rhs}]), Body1),
+            drive(Env0, E, R);
+        _ ->
+            %% TODO: is this tested?
+            {Env1,NewRhs} = drive(Env0, Rhs, []),
+            Env2 = extend_bound(Env1, sets:from_list([Lhs])),
+            {Env3,Body} = drive(Env2, Body1, R),
+            Env = Env3#env{bound = Env0#env.bound},
+            {Env,scp_expr:make_let(L, LhsV, NewRhs, Body)}
+    end;
+
+drive(Env0, E0={'fun',_,{clauses,Cs0}}, Ctxt=[#call_ctxt{line=Lc,args=As}|R]) -> %R5
+    %% The original rule simply uses a let, but Erlang's function
+    %% clauses have built-in pattern matching. The arguments that
+    %% require pattern matching become a case expression and the rest
+    %% becomes a let.
+    case lists:all(fun ({clause,_,Ps,_,_}) -> length(Ps) == length(As) end, Cs0) of
+        true ->
+            %%io:fwrite("inline. Cs0=~p~nAs=~p~n",[Cs0,As]),
+            {ok,Lhss,Rhss,CaseE,Cs} = scp_pattern:partition(Lc, Cs0, As),
+            {Env,Case} = scp_expr:alpha_convert(Env0, scp_expr:make_case(Lc, CaseE, Cs)),
+            E = scp_expr:make_let(Lc, Lhss, Rhss, [Case]),
+            drive(Env, E, R);
+        _ ->
+            %% Arity mismatch.
+            build(Env0, E0, Ctxt)
+    end;
 
 drive(Env0, {'fun',Line,{clauses,Cs0}}, R) ->   %R6
     {Env,Cs} = drive_clauses(Env0, Cs0),
     build(Env, {'fun',Line,{clauses,Cs}}, R);
 
-drive(Env0, E={var,_,Rhs}, R=[#case_ctxt{}|_]) -> %R8
-    drive_constructor_case(Env0, E, R);
-
-drive(Env0, {'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, R) ->
-    %% TODO: Letrec.
-    1 = 2;
+drive(Env0, E={'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, R) ->
+    %% Letrec.
+    {Bs,Body} = scp_expr:letrec_destruct(E),
+    Local = lists:foldl(fun ({Name,Arity,Rhs},L) ->
+                                dict:store({Name,Arity}, Rhs, L)
+                        end,
+                        Env0#env.local, Bs),
+    Env1 = Env0#env{local=Local},
+    {Env, Expr} = drive(Env1, scp_expr:list_to_block(Line, Body), R),
+    {Env#env{local=Env0#env.local},Expr};
 
 drive(Env0, E={'block',Lb,[{'match',Lm,P0,E0},Rest]}, R) ->
     drive(Env0, scp_expr:make_case(Lb, E0, [{clause,Lm,[P0],[],[Rest]}]), R);
-drive(Env0, {'block',Line,[A0,B0]}, R) ->       %New rule
+drive(Env0, {'block',Line,[A0,B0]}, R) ->
+    %% TODO: have the driving of case, match, etc save up a list of
+    %% variables that will become bound in B.
     {Env1, A} = drive(Env0, A0, []),
     {Env, B} = drive(Env1, B0, R),
     {Env, scp_expr:make_block(Line, A, B)};
@@ -103,23 +172,24 @@ drive(Env0, {'block',Line,Es}, R) ->
     drive(Env0, scp_expr:list_to_block(Line, Es), R);
 
 %% Focusing rules.
-drive(Env0, E={T,_,_}, Ctxt=[#op_ctxt{line=L, op=Op, e1=hole, e2=E2}|R])
-  when T=='integer'; T=='float'; T=='atom'; T=='string'; T=='char' -> %R10
-     drive(Env0, E2, [#op_ctxt{line=L, op=Op, e1=E}|R]);
+drive(Env0, E, Ctxt=[#op_ctxt{line=L, op=Op, e1=hole, e2=E2}|R])
+  when ?IS_CONST_EXPR(E) -> %R10
+    drive(Env0, E2, [#op_ctxt{line=L, op=Op, e1=E}|R]);
 
-drive(Env0, {cons,L,H,T}, R) ->                 %R11 for cons
-    drive(Env0, H, [#cons_ctxt{line=L, tail=T}|R]);
+%% drive(Env0, {op,L,'++',E1,E2}, R) ->
+%%     %% TODO: turn this into a call to locally defined append
+%%     ;
 drive(Env0, {op,L,Op,E1,E2}, R) ->              %R11
-    %% TODO: handle ++ specially
     drive(Env0, E1, [#op_ctxt{line=L, op=Op, e2=E2}|R]);
-drive(Env0, {op,L,Op,E}, R) ->
+drive(Env0, {op,L,Op,E}, R) ->                  %R11
     drive(Env0, E, [#op1_ctxt{line=L, op=Op}|R]);
-drive(Env0, {tuple,L,[A|As]}, R) ->
-    %% Drive on one element at a time.
-    drive(Env0, A, [#tuple_ctxt{line=L, todo=As}|R]);
 
 drive(Env0, {'call',L,F,Args}, R) ->            %R12
     drive(Env0, F, [#call_ctxt{line=L, args=Args}|R]);
+drive(Env0, {cons,L,H,T}, R) ->                 %R12 for cons
+    drive(Env0, {constructor,L,cons}, [#call_ctxt{line=L, args=[H,T]}|R]);
+drive(Env0, {tuple,L,Es}, R) ->                 %R12 for tuple
+    drive(Env0, {constructor,L,tuple}, [#call_ctxt{line=L, args=Es}|R]);
 
 drive(Env0, {'match',L,P,E}, R) ->
     %% XXX: pushes match into case clauses etc
@@ -136,33 +206,15 @@ drive(Env0, {'if',L,Cs}, R) ->
 %% Fallthrough.
 drive(Env0, Expr, R) ->                         %R14
     io:fwrite("~n%% Fallthrough!~n", []),
-    io:fwrite("%% Expr: ~p~n%% R: ~p~n",
-               [%%Env0#env{forms=x,
-              %%           global=dict:fetch_keys(Env0#env.global),
-              %%           local=dict:fetch_keys(Env0#env.local)},
-               Expr, R]),
+    io:fwrite("%% Expr: ~p~n%% R: ~p~n", [Expr, R]),
     build(Env0, Expr, R).
 
 %% Rebuilding expressions.
-build(Env0, Expr, [#tuple_ctxt{line=Line, done=Done, todo=[]}|R]) ->
-    build(Env0, {tuple,Line,lists:reverse([Expr|Done])}, R);
-build(Env0, Expr, [#tuple_ctxt{line=Line, done=Done, todo=[T|Ts]}|R]) ->
-    drive(Env0, T, [#tuple_ctxt{line=Line, done=[Expr|Done], todo=Ts}|R]);
-
-build(Env0, Expr, [#cons_ctxt{line=Line, tail=T0}|R]) ->  %R15 for cons
-    %% The intuition here is that the head of the cons has been driven
-    %% (c.f. R11) and now it's time to drive the tail and build a
-    %% residual cons expression.
-    %% TODO: maybe it's better to have this work like tuple and call
-    {Env1,T1} = drive(Env0, T0, []),
-    build(Env1, {cons,Line,Expr,T1}, R);
-
 build(Env0, Expr, [#op_ctxt{line=Line, op=Op, e1=hole, e2=E2}|R]) ->        %R15
     {Env1,E} = drive(Env0, E2, []),
     build(Env1, {op,Line,Op,Expr,E}, R);
 build(Env0, Expr, [#op_ctxt{line=Line, op=Op, e1=E1, e2=hole}|R]) ->        %R16
     build(Env0, {op,Line,Op,E1,Expr}, R);
-
 build(Env0, Expr, [#call_ctxt{line=Line, args=Args0}|R]) -> %R17
     {Env,Args} = drive_list(Env0, fun drive/3, Args0),
     build(Env, scp_expr:make_call(Line,Expr,Args), R);
@@ -198,7 +250,6 @@ build(Env, Expr, []) ->                         %R20
 
 build_case_general(Env0, Expr, Line, Cs0, R) ->
     %% Drive every clause body in the R context.
-    %% TODO: should have the same features as drive_constructor_case
     {Cs1,Env1} = lists:mapfoldr(
                    fun ({clause,Lc,H0,G0,B0},Env00) ->
                            Vars = head_variables(H0),
@@ -359,7 +410,8 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
                                     Letrec = scp_expr:make_letrec(Line,
                                                                   [{Fname,length(FV),NewFun}],
                                                                   [NewTerm]),
-                                    {Env6,Letrec}
+                                    %%{Env6,Letrec}
+                                    {Env6#env{ls=Env2#env.ls},Letrec}
                             end
                     end
             end
@@ -370,128 +422,105 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
 drive_BIF(Env, E, R) ->
     build(Env, E, R).
 
-%% Driving of case expressions.
-drive_const_case(Env0, E, Ctxt=[CR=#case_ctxt{clauses=Cs0}|R]) ->
-    %% E is a constant.
-    %% TODO: drive_constructor_case is much more powerful and should be
-    %% used for this as well...
-    case scp_pattern:find_matching_const(Env0#env.bound, E, Cs0) of
-        [{yes,{clause,L,[{var,_,V}],[],B}}] ->   %R7
-            %% The case just binds a variable to a constant.
-            S = dict:from_list([{V,E}]),
-            drive(Env0, scp_expr:subst(S, scp_expr:list_to_block(L, B)), R);
-        [{yes,{clause,L,P,[],B}}] ->
-            drive(Env0, scp_expr:list_to_block(L, B), R);
-        [] ->
-            %% No clauses can match, so preserve the error. It's
-            %% possible to make a case without any clauses, but if
-            %% printed it can't be parsed back.
-            build(Env0, E, Ctxt);
-        Possibles ->
-            %% Some impossible clauses may have been removed.
-            {_,Cs} = lists:unzip(Possibles),
-            build(Env0, E, [CR#case_ctxt{clauses=Cs}|R])
-    end.
 
-%% FIXME: this should not do any more than implement the drive let rule.
-%% Any other improvments should be in a build rule.
-drive_constructor_case(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0, line=Line}|R]) ->
-    case scp_pattern:simplify(Env0#env.bound, E0, Cs0) of
-        {_,_,[]} ->
-            %% All the clauses disappeared. Preserve the error in the
-            %% residual program.
-            build(Env0, E0, Ctxt);
-        {E0,nothing,SCs} ->
-            Cs = [C || {C,nothing} <- SCs],
-            case Cs of
-                Cs0 ->
-                    %% The expression didn't change and neither did
-                    %% the clauses.
-                    {Env1,E1} = drive(Env0, E0, []),
-                    build(Env1, E1, [CR#case_ctxt{clauses=Cs}|R]);
-                _ ->
-                    %% The expression didn't change, but some clause
-                    %% may have been removed.
-                    drive(Env0, E0, [CR#case_ctxt{clauses=Cs}|R])
-            end;
-        {E,nothing,SCs} ->
-            %% A new expression, so driving might improve it further.
-            Cs = [C || {C,nothing} <- SCs],
-            drive(Env0, E, [CR#case_ctxt{clauses=Cs}|R]);
-        {E,Rhs0,SCs} ->
-            %% An expression was removed from the constructor.
-            io:fwrite("Stuff happens: E=~p~n Rhs0=~p~n SCs=~p~n", [E,Rhs0,SCs]),
-            Cs1 = rebuild_clauses(Env0, Rhs0, SCs),
-            case lists:member(false, Cs1) of
-                %% true ->
-                %%     %% It wasn't possible to simply substitute the Lhs
-                %%     %% in every clause. Bind Rhs0 to a new variable
-                %%     %% and do the substitution with that instead. This
-                %%     %% is equivalent to the second case in R9.
+%% %% FIXME: this should not do any more than implement the drive let rule.
+%% %% Any other improvments should be in a build rule.
+%% drive_constructor_case(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0, line=Line}|R]) ->
+%%     %%{Env0,E0} = drive(EnvX, EX, []),
+%%     case scp_pattern:simplify(Env0#env.bound, E0, Cs0) of
+%%         {_,_,[]} ->
+%%             %% All the clauses disappeared. Preserve the error in the
+%%             %% residual program.
+%%             build(Env0, E0, Ctxt);
+%%         {E0,nothing,SCs} ->
+%%             Cs = [C || {C,nothing} <- SCs],
+%%             case Cs of
+%%                 Cs0 ->
+%%                     %% The expression didn't change and neither did
+%%                     %% the clauses.
+%%                     {Env1,E1} = drive(Env0, E0, []),
+%%                     build(Env1, E1, [CR#case_ctxt{clauses=Cs}|R]);
+%%                 _ ->
+%%                     %% The expression didn't change, but some clause
+%%                     %% may have been removed.
+%%                     drive(Env0, E0, [CR#case_ctxt{clauses=Cs}|R])
+%%             end;
+%%         {E,nothing,SCs} ->
+%%             %% A new expression, so driving might improve it further.
+%%             Cs = [C || {C,nothing} <- SCs],
+%%             drive(Env0, E, [CR#case_ctxt{clauses=Cs}|R]);
+%%         {E,Rhs0,SCs} ->
+%%             %% An expression was removed from the constructor.
+%%             io:fwrite("Stuff happens: E=~p~n Rhs0=~p~n SCs=~p~n", [E,Rhs0,SCs]),
+%%             Cs1 = rebuild_clauses(Env0, Rhs0, SCs),
+%%             case lists:member(false, Cs1) of
+%%                 %% true ->
+%%                 %%     %% It wasn't possible to simply substitute the Lhs
+%%                 %%     %% in every clause. Bind Rhs0 to a new variable
+%%                 %%     %% and do the substitution with that instead. This
+%%                 %%     %% is equivalent to the second case in R9.
 
-                %%     %% TODO: check that this works. Also check if it
-                %%     %% would work better to make the block and then do
-                %%     %% driving on that instead.
-                %%     io:fwrite("Stuff happening~n"),
-                %%     {Env1,Rhs} = drive(Env0, Rhs0, []),
-                %%     {Env2,Var} = scp_expr:gensym(Env1, "P"),
-                %%     Cs2 = rebuild_clauses(Env2, {var,Line,Var}, SCs),
-                %%     Match = {match,Line,{var,Line,Var},Rhs},
-                %%     Env = extend_bound(Env2, sets:from_list([Var])),
-                %%     Case = drive(Env, E, [CR#case_ctxt{clauses=Cs2}|R]),
-                %%     NewE = scp_expr:make_block(Match, Case),
-                %%     io:fwrite("Stuff happened: NewE=~p~n", [NewE]),
-                %%     NewE;
-                false ->
-                    NewCtxt = [CR#case_ctxt{clauses=Cs1}|R],
-                    case lists:all(fun ({_,nothing}) -> true;
-                                       ({_,_}) -> false
-                                   end, SCs) of
-                        true ->
-                            %% Lhs=nothing for all SCs, must
-                            %% residualize Rhs for effect.
-                            io:fwrite("Residualized Rhs0=~p Cs1=~p~n", [Rhs0, Cs1]),
-                            drive(Env0, scp_expr:make_block(Line, Rhs0, E), NewCtxt);
-                        false ->
-                            %% Lhs in each clause was substituted for Rhs.
-                            io:fwrite("Stuff was easy. Cs1=~p~n",[Cs1]),
-                            drive(Env0, E, NewCtxt)
-                    end
-            end;
-        Foo ->
-            %% Something more clever happened.
-            io:fwrite("constructor case default: E=~p~n Ctxt=~p~n Foo=~p~n", [E0,Ctxt,Foo]),
-            build(Env0, E0, Ctxt)
-    end.
+%%                 %%     %% TODO: check that this works. Also check if it
+%%                 %%     %% would work better to make the block and then do
+%%                 %%     %% driving on that instead.
+%%                 %%     io:fwrite("Stuff happening~n"),
+%%                 %%     {Env1,Rhs} = drive(Env0, Rhs0, []),
+%%                 %%     {Env2,Var} = scp_expr:gensym(Env1, "P"),
+%%                 %%     Cs2 = rebuild_clauses(Env2, {var,Line,Var}, SCs),
+%%                 %%     Match = {match,Line,{var,Line,Var},Rhs},
+%%                 %%     Env = extend_bound(Env2, sets:from_list([Var])),
+%%                 %%     Case = drive(Env, E, [CR#case_ctxt{clauses=Cs2}|R]),
+%%                 %%     NewE = scp_expr:make_block(Match, Case),
+%%                 %%     io:fwrite("Stuff happened: NewE=~p~n", [NewE]),
+%%                 %%     NewE;
+%%                 false ->
+%%                     NewCtxt = [CR#case_ctxt{clauses=Cs1}|R],
+%%                     case lists:all(fun ({_,nothing}) -> true;
+%%                                        ({_,_}) -> false
+%%                                    end, SCs) of
+%%                         true ->
+%%                             %% Lhs=nothing for all SCs, must
+%%                             %% residualize Rhs for effect.
+%%                             io:fwrite("Residualized Rhs0=~p Cs1=~p~n", [Rhs0, Cs1]),
+%%                             drive(Env0, scp_expr:make_block(Line, Rhs0, E), NewCtxt);
+%%                         false ->
+%%                             %% Lhs in each clause was substituted for Rhs.
+%%                             io:fwrite("Stuff was easy. Cs1=~p~n",[Cs1]),
+%%                             drive(Env0, E, NewCtxt)
+%%                     end
+%%             end;
+%%         Foo ->
+%%             %% Something more clever happened.
+%%             io:fwrite("constructor case default: E=~p~n Ctxt=~p~n Foo=~p~n", [E0,Ctxt,Foo]),
+%%             build(Env0, E0, Ctxt)
+%%     end.
 
-rebuild_clauses(Env, Rhs, [{C0,nothing}|SCs]) ->
-    [C0|rebuild_clauses(Env, Rhs, SCs)];
-rebuild_clauses(Env, Rhs, [{C0,Lhs}|SCs]) ->
-    %% Replace Lhs with Rhs in the body, if it's semantically ok.
-    {clause,L,P,G,B0} = C0,
-    %% FIXME: if Lhs ever appears in a guard, then Rhs must be a legal
-    %% guard expression.
-    case scp_expr:terminates(Env, Rhs)
-        orelse (scp_expr:is_linear(Lhs, B0)
-                andalso scp_expr:is_strict(Lhs, B0)) of
-        true ->
-            S = dict:from_list([{Lhs,Rhs}]),
-            B = [scp_expr:subst(S, X) || X <- B0],
-            C = {clause,L,P,G,B},
-            [C|rebuild_clauses(Env, Rhs, SCs)];
-        _ ->
-            false
-    end;
-rebuild_clauses(_, _, []) ->
-    [].
+%% rebuild_clauses(Env, Rhs, [{C0,nothing}|SCs]) ->
+%%     [C0|rebuild_clauses(Env, Rhs, SCs)];
+%% rebuild_clauses(Env, Rhs, [{C0,Lhs}|SCs]) ->
+%%     %% Replace Lhs with Rhs in the body, if it's semantically ok.
+%%     {clause,L,P,G,B0} = C0,
+%%     %% FIXME: if Lhs ever appears in a guard, then Rhs must be a legal
+%%     %% guard expression.
+%%     case scp_expr:terminates(Env, Rhs)
+%%         orelse (scp_expr:is_linear(Lhs, B0)
+%%                 andalso scp_expr:is_strict(Lhs, B0)) of
+%%         true ->
+%%             S = dict:from_list([{Lhs,Rhs}]),
+%%             B = [scp_expr:subst(S, X) || X <- B0],
+%%             C = {clause,L,P,G,B},
+%%             [C|rebuild_clauses(Env, Rhs, SCs)];
+%%         _ ->
+%%             false
+%%     end;
+%% rebuild_clauses(_, _, []) ->
+%%     [].
 
 %% Plug an expression into a context.
 plug(Expr, [#call_ctxt{line=Line, args=Args}|R]) ->
     plug({call,Line,Expr,Args}, R);
 plug(Expr, [#case_ctxt{line=Line, clauses=Cs}|R]) ->
     plug(scp_expr:make_case(Line,Expr,Cs), R);
-plug(Expr, [#cons_ctxt{line=Line, tail=T}|R]) ->
-    plug({cons,Line,Expr,T}, R);
 plug(Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
     plug({match,Line,Expr,P}, R);
 plug(Expr, [#op_ctxt{line=Line, op=Op, e1=hole, e2=E2}|R]) ->
@@ -500,10 +529,12 @@ plug(Expr, [#op_ctxt{line=Line, op=Op, e1=E1, e2=hole}|R]) ->
     plug({op,Line,Op,E1,Expr}, R);
 plug(Expr, [#op1_ctxt{line=Line, op=Op}|R]) ->
     plug({op,Line,Op,Expr}, R);
-plug(Expr, [#tuple_ctxt{line=Line, done=Ds, todo=Ts}|R]) ->
-    plug({tuple,Line,lists:reverse([Expr|Ds])++Ts}, R);
 plug(Expr, []) ->
     Expr.
+
+%% Perform a substitution on a context.
+%% subst_ctxt() ->
+%%     ;
 
 %% Generalization.
 generalize(Env0, E1, E2) ->
@@ -552,7 +583,7 @@ build_test() ->
 residualize_test() ->
     %% When something is removed from the scrutinee it must either be
     %% side-effect free or else be residualized for effect.
-    E0 = scp_expr:read("case {1,length(U)} of {X,_} -> 1 end"),
+    E0 = scp_expr:read("case [1|length(U)] of [X|_] -> 1 end"),
     {Env,E} = drive(#env{}, E0, []),
     io:fwrite("E=~p~n",[E]),
     ['U'] = scp_expr:variables(E).

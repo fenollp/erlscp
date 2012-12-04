@@ -7,7 +7,7 @@
 -export([pattern_variables/1,
          find_constructor_clause/3,
          partition/3,
-         find_matching_const/3,
+         find_matching_const/2,
          simplify/3,
          simplify_guard_seq/1,
          guard_seq_eval/1]).
@@ -26,9 +26,10 @@ guard_variables(G) ->
     erl_syntax_lib:variables({clause,1,[],G,[{nil,1}]}).
 
 %% E is a constructor and Cs0 is clauses from a case expression. The
-%% job is to find the clause that matches the constructor and return
-%% the bindings needed for that clause. If it finds a matching clause
-%% it returns {ok,Lhss,Rhss,Body}.
+%% job is to find the clause that matches E and return the bindings
+%% needed for that clause. If it finds a matching clause it returns
+%% {ok,Lhss,Rhss,Body}. It must completely eliminate the case
+%% expression and the constructor.
 find_constructor_clause(Bs, E={cons,L,H,T},
                         [{clause,_,[{cons,_,LhsH={var,_,NH},LhsT={var,_,NT}}],[],Body}|Cs])
   when NH =/= NT->
@@ -39,7 +40,7 @@ find_constructor_clause(Bs, E={cons,L,H,T},
     end;
 find_constructor_clause(Bs, E={cons,L,H,T}, [_|Cs]) ->
     find_constructor_clause(Bs, E, Cs);
-%% TODO: handle tuples and patterns with some constants, and guards
+%% TODO: use simplify iteratively until there's nothing left
 find_constructor_clause(_, _, _) ->
     false.
 
@@ -49,12 +50,14 @@ find_constructor_clause(_, _, _) ->
 %% Must not be clever about the function arguments.
 %% Returns {ok,Lhss,Rhss,E,Cs}.
 partition(Line, Cs0, As0) ->
-    io:fwrite("partition~n Cs0=~p~n As0=~p~n",[Cs0,As0]),
+    ?DEBUG("partition~n Cs0=~p~n As0=~p~n",[Cs0,As0]),
     Arity = length(As0),
     %% Annotate the clauses with a list of used variables (includes
     %% multiple occurences).
     ACs = lists:map(fun ({clause,L,Ps,G,B}) ->
                             Vs = lists:flatmap(fun scp_expr:variables/1,
+                                               %% TODO: is it relevant
+                                               %% to check the guard?
                                                Ps ++ lists:flatten(G)),
                             {aclause,L,Ps,G,B,Vs}
                     end, Cs0),
@@ -77,7 +80,7 @@ partition(Line, Cs0, As0) ->
                        _ -> []
                    end
            end, lists:seq(1, Arity)),
-    io:fwrite("Ns = ~p~n",[Ns]),
+    ?DEBUG("Ns = ~p~n",[Ns]),
     %% Pick a name for each simple variable.
     Lhss = lists:map(
              fun (N) ->
@@ -101,9 +104,9 @@ partition(Line, Cs0, As0) ->
     E = remove_exprs(Line, Ns, As0),
     %% The simple variables are now removed from the clauses and the
     %% bodies are modified to use the names from Lhss.
-    io:fwrite("Lhss=~p Rhss=~p E=~p~n",[Lhss,Rhss,E]),
+    ?DEBUG("Lhss=~p Rhss=~p E=~p~n",[Lhss,Rhss,E]),
     Cs = update_clauses(Cs0, Ns, Lhss),
-    io:fwrite("Cs=~p~n",[Cs]),
+    ?DEBUG("Cs=~p~n",[Cs]),
     {ok,Lhss,Rhss,E,Cs}.
 
 %% For each N in Ns: remove the Nth element from As0. Construct a new
@@ -153,7 +156,7 @@ update_clauses1(Cs0, [N|Ns], [Lhs={var,_,NewName}|Lhss]) ->
                        _ ->
                            %% This clause used a different variable
                            %% name.
-                           io:fwrite("Use a new name: ~p => ~p~n",[OldName,Lhs]),
+                           ?DEBUG("Use a new name: ~p => ~p~n",[OldName,Lhs]),
                            S = dict:from_list([{OldName,Lhs}]),
                            scp_expr:subst(S, C)
                    end
@@ -161,24 +164,18 @@ update_clauses1(Cs0, [N|Ns], [Lhs={var,_,NewName}|Lhss]) ->
     update_clauses1(Cs, Ns, Lhss).
 
 %% Go over the list of clauses left to right and return the clauses
-%% that could match the constant E. Each clause is the tuple
+%% that could match the constant E. Each element returned is a tuple
 %% {Taken,Clause}, where Taken==yes if it's certain that the clause
-%% will be taken. Only works with constant expressions (including the
-%% empty tuple) and patterns that are constants or a single variable.
-find_matching_const(Bs, E, Cs0) ->
-    %%?DEBUG("find_matching_const(~p, ~p)~n => ~p~n",[E,Cs,fmcc(E, Cs)]),
-    Cs = impossible(Bs, E, Cs0),                %also handles variables
-    fmcc(E, Cs).
-
+%% will be taken. Only works with constants and patterns that are
+%% constants.
+find_matching_const(E, Cs0) -> fmcc(E, Cs0).
 fmcc(E={T,_,V}, [C={clause,_,[{T,_,V}],_,_}|Cs]) -> fmcc_cons(E, {yes,C}, Cs);
 fmcc(E={T,_,_}, [C={clause,_,[{T,_,_}],_,_}|Cs]) -> fmcc(E, Cs);
 fmcc(E={nil,_}, [C={clause,_,[{nil,_}],_,_}|Cs]) -> fmcc_cons(E, {yes,C}, Cs);
-fmcc(E, [C={clause,_,[{var,_,_}],_,_}|Cs]) -> [{yes,C}|fmcc(E, Cs)];
 fmcc(E, [C|Cs]) -> [{maybe,C}|fmcc(E, Cs)];
 fmcc(_, []) -> [].
-%%fmcc_cons(E, C={Taken,{clause,_,_,[],_}}, Cs) -> [C];
 fmcc_cons(E, C={Taken,{clause,L,P,Guard,B}}, Cs) ->
-    case guard_seq_eval(Guard) of
+    case guard_seq_eval(simplify_guard_seq(Guard)) of
         true -> [{Taken,{clause,L,P,[],B}}];
         false -> fmcc(E, Cs);
         _ -> [C|fmcc(E, Cs)]
