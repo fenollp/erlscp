@@ -30,15 +30,6 @@ head_variables(Head) ->
 extend_bound(Env,Vars) ->
     Env#env{bound=sets:union(Env#env.bound, Vars)}.
 
--define(IS_CONST_EXPR(E),
-        element(1,E)=='integer';
-            element(1,E)=='float';
-            element(1,E)=='atom';
-            element(1,E)=='string';
-            element(1,E)=='char';
-            element(1,E)=='nil';
-            element(1,E)=='tuple', element(3,E)==[]).
-
 %% The driving algorithm. The environment is used to pass information
 %% downwards and upwards the stack. R is the current context.
 
@@ -51,7 +42,10 @@ drive(Env0, E, Ctxt=[#case_ctxt{clauses=Cs0}|R]) when ?IS_CONST_EXPR(E) -> %R1
         [{yes,{clause,L,P,[],B}}] ->
             drive(Env0, scp_expr:list_to_block(L, B), R);
         _ ->
-            %% No clause matches the constant exactly.
+            %% No clause matches the constant exactly. TODO: if the
+            %% first case that matches binds the constant to a
+            %% variable and that variable is not defined by every
+            %% clause, then turn this case into a let
             build(Env0, E, Ctxt)
     end;
 
@@ -87,10 +81,9 @@ drive(Env0, E0={constructor,L,Cons},
     io:fwrite("Known constructor in a case.~n~p~n~p~n",[E,Ctxt]),
     case scp_pattern:find_constructor_clause(Env0#env.bound, E, Cs0) of
         {ok,Lhss,Rhss,Body} ->
-            %% FIXME: if one Lhs was defined by every clause then it
-            %% can't really become a let, because it might be used
-            %% after the case expression. Maybe the code for blocks
-            %% can determine which names are live out?
+            %% FIXME: if one Lhs was defined by every clause then this
+            %% can't really become a let, because Lhs might be used
+            %% after the case expression.
             drive(Env0, scp_expr:make_let(L, Lhss, Rhss, Body), R);
         _ ->
             %% Couldn't find a clause that simply matches the known
@@ -219,9 +212,9 @@ build(Env0, Expr, [#call_ctxt{line=Line, args=Args0}|R]) -> %R17
     {Env,Args} = drive_list(Env0, fun drive/3, Args0),
     build(Env, scp_expr:make_call(Line,Expr,Args), R);
 %% build(Env0, Expr={var,_,_}, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R18
-%%     drive_case_variable(Env0, Expr, Line, Cs0, R);
+%%     drive_case_variable(Env0, Line, Expr, Cs0, R);
 build(Env0, Expr, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R19
-    build_case_general(Env0, Expr, Line, Cs0, R);
+    build_case_general(Env0, Line, Expr, Cs0, R);
 build(Env0, Expr, [#op1_ctxt{line=Line, op=Op}|R]) ->
     build(Env0, {op,Line,Op,Expr}, R);
 build(Env0, Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
@@ -231,7 +224,7 @@ build(Env, Expr, []) ->                         %R20
     {Env, Expr}.
 
 %% TODO:
-%% build_case_variable(Env0, {var,Lc,V}, Line, Cs0, R) ->
+%% build_case_variable(Env0, Line, {var,Lc,V}, Cs0, R) ->
 %%     %% Drive every clause body in the R context, substituting in V
 %%     %% where possible.
 %%     {Cs1,Env1} = lists:mapfoldr(
@@ -248,8 +241,9 @@ build(Env, Expr, []) ->                         %R20
 %%     Case = scp_expr:make_case(Line, Expr, Cs1),
 %%     {Env1, Case}.
 
-build_case_general(Env0, Expr, Line, Cs0, R) ->
+build_case_general(Env0, Line, Expr, Cs0, R) ->
     %% Drive every clause body in the R context.
+    %% TODO: this should be doing simplifications
     {Cs1,Env1} = lists:mapfoldr(
                    fun ({clause,Lc,H0,G0,B0},Env00) ->
                            Vars = head_variables(H0),

@@ -23,3 +23,12 @@
               %% The name of the function being supercompiled.
               name = "",
               forms = []}).
+
+-define(IS_CONST_EXPR(E),
+        element(1,E)=='integer';
+            element(1,E)=='float';
+            element(1,E)=='atom';
+            element(1,E)=='string';
+            element(1,E)=='char';
+            element(1,E)=='nil';
+            element(1,E)=='tuple', element(3,E)==[]).

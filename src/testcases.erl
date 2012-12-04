@@ -76,6 +76,17 @@ double(Xs) -> ap(Xs, Xs).
 -define(FOOBAR,1).
 
 -ifdef(FOOBAR).
+%% byte_bsr(A,0) -> A;
+%% byte_bsr(A,B) -> A bsr B.
+%% byte_bor(A,0) -> A;
+%% byte_bor(A,B) -> A bor B.
+%% byte_band(A,16#FF) -> A;
+%% byte_band(A,B) -> A band B.
+%% to_utf8(Code, Len, I, Set, Mask) when Len >= I ->
+%%     [byte_band(byte_bor(byte_bsr(Code, (6 * (Len - I))),
+%%                         Set),
+%%                Mask)];
+
 %% to_utf8(Code, Len, I, Set, Mask) when Len >= I ->
 %%     A = if Len == I -> Code; true -> Code bsr (6 * (Len - I)) end,
 %%     B = if Set == 0 -> A; true -> A bor Set end,
@@ -149,13 +160,13 @@ bound_test() ->
     X = 1,
     1 = case 1 of
             X -> 1;
-            Y -> 0
+            _Y -> 0
         end.
 
 unbound_test() ->
     X = 1,
     1 = case 1 of
-            Y -> 1;
+            _Y -> 1;
             X -> 0;
             _ -> vat
         end.
@@ -224,36 +235,11 @@ guard_2_simplify_test() ->
                 element(1, X)
         end.
 
-%% bar_test() ->
-%%     1,
-%%     fun (X) ->
-%% 	    begin X + 1, X + 3 end,
-%% 	    X
-%%     end.
-
 %% apt({Xs,Ys}) ->
 %%     case {Xs,Ys} of
 %%         {[]} -> Ys;
 %%         {[X|Xs]} -> [X|apt({Xs,Ys})]
 %%     end.
-
-%% ap(Xs,Ys) ->
-%%     case Xs of
-%%         [] -> Ys;
-%%         [X|Xs] -> [X|ap(Xs,Ys)]
-%%     end.
-
-
-%% foo2(X,X)->X.
-%% foo2() ->
-%%     (X=1)+(X=1).
-
-%% cases(X) ->
-%%     case X of
-%%         [A|B] -> ok;
-%%         _ -> B = X
-%%     end,
-%%     B.
 
 %% broken(Code) ->
 %%     map(fun (X) ->

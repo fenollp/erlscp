@@ -638,6 +638,7 @@ terminates(Env, _) -> false.
 %% Is the variable N linear in E? It is if it's guaranteed that N will
 %% be evaluated at most once in E. E must have been alpha converted.
 %% XXX: what about patterns?
+is_linear('_', _) -> true;
 is_linear(N, E) ->
     %% TODO
     io:fwrite("is_linear ~p ~p~n",[N,E]),
@@ -652,6 +653,7 @@ lin(_, {var,_,_}) ->
 %% Is the variable N strict in E? In other words, is it guaranteed
 %% that N will be evaluated in E? E must have been alpha converted.
 %% XXX: what about patterns?
+is_strict('_', _) -> false;
 is_strict(N, {var,_,N}) -> true;
 is_strict(N, E) ->
     %% TODO

@@ -29,20 +29,81 @@ guard_variables(G) ->
 %% job is to find the clause that matches E and return the bindings
 %% needed for that clause. If it finds a matching clause it returns
 %% {ok,Lhss,Rhss,Body}. It must completely eliminate the case
-%% expression and the constructor.
-find_constructor_clause(Bs, E={cons,L,H,T},
-                        [{clause,_,[{cons,_,LhsH={var,_,NH},LhsT={var,_,NT}}],[],Body}|Cs])
-  when NH =/= NT->
-    case sets:is_element(NH, Bs) orelse sets:is_element(NT, Bs) of
-        false ->
-            {ok,[LhsH,LhsT],[H,T],Body};
-        _ -> find_constructor_clause(Bs, E, Cs)
-    end;
-find_constructor_clause(Bs, E={cons,L,H,T}, [_|Cs]) ->
-    find_constructor_clause(Bs, E, Cs);
-%% TODO: use simplify iteratively until there's nothing left
-find_constructor_clause(_, _, _) ->
-    false.
+%% expression and the constructor (or return false).
+%% find_constructor_clause(Bs, E={cons,L,H,T},
+%%                         [{clause,_,[{cons,_,LhsH={var,_,NH},LhsT={var,_,NT}}],[],Body}|Cs])
+%%   when NH =/= NT->
+%%     case sets:is_element(NH, Bs) orelse sets:is_element(NT, Bs) of
+%%         false ->
+%%             {ok,[LhsH,LhsT],[H,T],Body};
+%%         _ -> find_constructor_clause(Bs, E, Cs)
+%%     end;
+%% find_constructor_clause(Bs, E={cons,L,H,T}, [_|Cs]) -> %bug!
+%%     find_constructor_clause(Bs, E, Cs);
+%% find_constructor_clause(_, _, _) ->
+%%     false.
+
+find_constructor_clause(Bs, E, Cs) ->
+    case fcc(Bs, E, Cs) of
+        {ok,_,Lhss,Rhss,Body} ->
+            io:fwrite("fcc returns ~p", [{ok,Lhss,Rhss,Body}]),
+            {ok,Lhss,Rhss,Body};
+        X -> X
+    end.
+fcc(Bs, E0, Cs0) ->
+    %% XXX: in this instance simplify only needs to look at one or two
+    %% paths
+    io:fwrite("fcc(Bs, ~p,~n ~p)~n",[E0,Cs0]),
+    case simplify(Bs, E0, Cs0) of
+        {_,_,[]} ->
+            %% All the clauses just disappeared, so there is no body
+            %% and this probably is probably going to be a runtime
+            %% error.
+            io:fwrite("fcc all clauses gone~n"),
+            false;
+        {{nil,_},nothing,[{{clause,L,[{nil,_}],[],Body},nothing}]} ->
+            %% Now nothing remains of the case expression but a single
+            %% body.
+            io:fwrite("fcc: body: ~p~n",[Body]),
+            {ok,L,[],[],Body};
+        {E0,nothing,SCs} ->
+            %% The expression didn't change, but if the clauses
+            %% changed then try again.
+            Cs = [C || {C,nothing} <- SCs],
+            case Cs of
+                Cs0 -> false;
+                _ -> fcc(Bs, E0, Cs)
+            end;
+        {E,nothing,SCs} ->
+            %% A new expression and new clauses, so there may be more
+            %% improvements to make.
+            Cs = [C || {C,nothing} <- SCs],
+            fcc(Bs, E, Cs);
+        {E,Rhs,SCs} ->
+            %% An expression was removed from the constructor and the
+            %% clauses were modified accordingly. Right now there are
+            %% possibly more clauses remaining, each with its own Lhs
+            %% for the extracted Rhs.
+            io:fwrite("fcc extracts an expression!~n E: ~p~n Rhs: ~p~n SCs: ~p~n", [E,Rhs,SCs]),
+            %% Simplify the rest of the case expression, remembering
+            %% which Lhs each clause used.
+            ASCs = [{clause,{Lhs,L},P,G,B} || {{clause,L,P,G,B},Lhs} <- SCs],
+            case fcc(Bs, E, ASCs) of
+                {ok,{Lhs0,L},Lhss,Rhss,Body} ->
+                    %% XXX: the line info for Lhs is lost
+                    Lhs = case Lhs0 of nothing -> '_'; _ -> Lhs0 end,
+                    {ok,L,[{var,1,Lhs}|Lhss],[Rhs|Rhss],Body};
+                _ ->
+                    %% Trying further simplifications did not result
+                    %% in full elimination of the case expressions.
+                    false
+            end;
+        X ->
+            %% Something more clever happened.
+            io:fwrite("fcc default: E=~p~n X=~p~n", [E0,X]),
+            false
+    end.
+
 
 %% Partitions the function clauses and arguments into simple variables
 %% and patterns. The simple variables from the clauses can make a
@@ -167,11 +228,13 @@ update_clauses1(Cs0, [N|Ns], [Lhs={var,_,NewName}|Lhss]) ->
 %% that could match the constant E. Each element returned is a tuple
 %% {Taken,Clause}, where Taken==yes if it's certain that the clause
 %% will be taken. Only works with constants and patterns that are
-%% constants.
+%% constants (or that bind to _). The caller does not want to deal
+%% with binding a variable.
 find_matching_const(E, Cs0) -> fmcc(E, Cs0).
 fmcc(E={T,_,V}, [C={clause,_,[{T,_,V}],_,_}|Cs]) -> fmcc_cons(E, {yes,C}, Cs);
 fmcc(E={T,_,_}, [C={clause,_,[{T,_,_}],_,_}|Cs]) -> fmcc(E, Cs);
 fmcc(E={nil,_}, [C={clause,_,[{nil,_}],_,_}|Cs]) -> fmcc_cons(E, {yes,C}, Cs);
+fmcc(E, [C={clause,_,[{var,_,'_'}],_,_}|Cs]) -> fmcc_cons(E, {yes,C}, Cs);
 fmcc(E, [C|Cs]) -> [{maybe,C}|fmcc(E, Cs)];
 fmcc(_, []) -> [].
 fmcc_cons(E, C={Taken,{clause,L,P,Guard,B}}, Cs) ->
@@ -213,21 +276,38 @@ geval(E={call,Line,F0,As0}) ->
 geval(E) -> E.
 
 
-%% Perform one simplification on a case expression. Given the bound
-%% variables Bs and the expression E (which must be a constructor),
-%% return a new E, an extracted expression and a new list of clauses.
-%% Each clause may also have a variable name associated with it, to
-%% which the extracted expression should be bound.
+%% Perform one pass of simplifications on a case expression. Given the
+%% bound variables Bs and the expression E (which must be a
+%% constructor), return a new E, an extracted expression and a new
+%% list of clauses. Each clause may also have a variable name
+%% associated with it, to which the extracted expression should be
+%% bound.
 simplify(Bs, E0, Cs0) ->
     ?DEBUG("simplify E0=~p~n Cs0=~p~n",[E0,Cs0]),
     {E1,Cs1} = trivial(E0, Cs0),
     ?DEBUG("trivial E1=~p~n Cs1=~p~n",[E1,Cs1]),
     Cs2 = impossible(Bs, E1, Cs1),
-    %%Cs2 = Cs1,
     ?DEBUG("impossible ~n Cs=~p~n",[Cs2]),
-    {E3,Rhs,SCs} = common(Bs, E1, Cs2),
-    ?DEBUG("common E=~p ~n SCs=~p~n",[E3,SCs]),
-    {E3,Rhs,SCs}.
+    case simplify_const(E1, Cs2) of
+        {E,SCs} ->
+            {E,nothing,SCs};
+        _ ->
+            {E3,Rhs,SCs} = common(Bs, E1, Cs2),
+            ?DEBUG("common E=~p ~n SCs=~p~n",[E3,SCs]),
+            {E3,Rhs,SCs}
+    end.
+
+simplify_const(E0, Cs0) when ?IS_CONST_EXPR(E0) ->
+    %% If E0 is a constant and there's a matching clause, then
+    %% simplify the constant to a nil.
+    case find_matching_const(E0, Cs0) of
+        [{yes,{clause,L,_,[],B}}] ->
+            E = {nil,1},
+            C = {clause,L,[E],[],B},
+            {E,[{C,nothing}]};
+        _ -> false
+    end;
+simplify_const(_, _) -> false.
 
 
 %% TODO: couldn't common/3 remove these?
