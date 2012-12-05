@@ -35,9 +35,9 @@ form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
     {Env2,Expr1} = scp_expr:alpha_convert(Env1, Expr0),
     {Env,Expr2} = scp_main:drive(Env2, Expr1, []),
     {Expr,Letrecs} = scp_expr:extract_letrecs(Expr2),
-    Functions = [ scp_expr:fun_to_function(Expr, Name, Arity) ||
+    Functions = [ scp_expr:fun_to_function(scp_tidy:function(Expr), Name, Arity) ||
                     {Name, Arity, Expr} <- Letrecs ],
-    Function = scp_expr:fun_to_function(Expr, Name, Arity),
+    Function = scp_expr:fun_to_function(scp_tidy:function(Expr), Name, Arity),
     {[Function|Functions],Env};
 form(X, Env) ->
     {[X],Env}.

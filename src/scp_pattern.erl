@@ -26,19 +26,6 @@ guard_variables(G) ->
 %% needed for that clause. If it finds a matching clause it returns
 %% {ok,Lhss,Rhss,Body}. It must completely eliminate the case
 %% expression and the constructor (or return false).
-%% find_constructor_clause(Bs, E={cons,L,H,T},
-%%                         [{clause,_,[{cons,_,LhsH={var,_,NH},LhsT={var,_,NT}}],[],Body}|Cs])
-%%   when NH =/= NT->
-%%     case sets:is_element(NH, Bs) orelse sets:is_element(NT, Bs) of
-%%         false ->
-%%             {ok,[LhsH,LhsT],[H,T],Body};
-%%         _ -> find_constructor_clause(Bs, E, Cs)
-%%     end;
-%% find_constructor_clause(Bs, E={cons,L,H,T}, [_|Cs]) -> %bug!
-%%     find_constructor_clause(Bs, E, Cs);
-%% find_constructor_clause(_, _, _) ->
-%%     false.
-
 find_constructor_clause(Bs, E, Cs) ->
     case fcc(Bs, E, Cs) of
         {ok,_,Lhss,Rhss,Body} ->
