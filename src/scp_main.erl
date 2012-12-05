@@ -114,6 +114,7 @@ drive(Env0, {'fun',_,{clauses,[{clause,_,[LhsV={var,_,Lhs}],[],Body0}]}},
             drive(Env0, E, R);
         _ ->
             %% TODO: is this tested?
+            io:fwrite("residual let.~n",[]),
             {Env1,NewRhs} = drive(Env0, Rhs, []),
             Env2 = extend_bound(Env1, sets:from_list([Lhs])),
             {Env3,Body} = drive(Env2, Body1, R),
@@ -332,7 +333,8 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
             {Env0#env{found=[Fname|Env0#env.found]},Expr};
         _ ->
             %% Next try to find a homeomorphic embedding.
-            case scp_generalize:find_homeomorphic_embeddings(Env0, L) of
+            case Env0#env.whistle_enabled
+                andalso scp_generalize:find_homeomorphic_embeddings(Env0, L) of
                 {ok,Embeddings} ->
                     io:fwrite("The whistle! ~p~n", [Embeddings]),
                     io:fwrite("L: ~p~n", [L]),

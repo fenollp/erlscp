@@ -2,9 +2,8 @@
 -export([ap/2, ap/3,
          rev/2, map/2, zip/2, flatten/1,
          sum/1, double/1,
-         square/1, sumsqs/1
-         %%to_utf8/1,
-         %%string_to_utf8/1,
+         square/1, sumsqs/1,
+         to_utf8/1, string_to_utf8/1
         ]).
 -include("scp.hrl").
 -compile({parse_transform, erlang_supercompiler}).
@@ -87,29 +86,29 @@ double(Xs) -> ap(Xs, Xs).
 %%                         Set),
 %%                Mask)];
 
-%% to_utf8(Code, Len, I, Set, Mask) when Len >= I ->
-%%     A = if Len == I -> Code; true -> Code bsr (6 * (Len - I)) end,
-%%     B = if Set == 0 -> A; true -> A bor Set end,
-%%     [if Mask == 16#FF -> B; true -> B band Mask end];
-%% to_utf8(_, _, _, _, _) ->
-%%     [].
+to_utf8(Code, Len, I, Set, Mask) when Len >= I ->
+    A = if Len == I -> Code; true -> Code bsr (6 * (Len - I)) end,
+    B = if Set == 0 -> A; true -> A bor Set end,
+    [if Mask == 16#FF -> B; true -> B band Mask end];
+to_utf8(_, _, _, _, _) ->
+    [].
 
-%% to_utf8(Code, Len) ->
-%%     LengthCodes = {16#00, 16#00, 16#C0, 16#E0, 16#F0},
-%%     flatten(
-%%       [to_utf8(Code, Len, 1, element(Len + 1, LengthCodes), 16#FF),
-%%        to_utf8(Code, Len, 2, 16#80, 16#BF),
-%%        to_utf8(Code, Len, 3, 16#80, 16#BF),
-%%        to_utf8(Code, Len, 4, 16#80, 16#BF)]).
+to_utf8(Code, Len) ->
+    LengthCodes = {16#00, 16#00, 16#C0, 16#E0, 16#F0},
+    flatten(
+      [to_utf8(Code, Len, 1, element(Len + 1, LengthCodes), 16#FF),
+       to_utf8(Code, Len, 2, 16#80, 16#BF),
+       to_utf8(Code, Len, 3, 16#80, 16#BF),
+       to_utf8(Code, Len, 4, 16#80, 16#BF)]).
 
-%% to_utf8(Code) when Code < 16#80 -> to_utf8(Code, 1);
-%% to_utf8(Code) when Code < 16#800 -> to_utf8(Code, 2);
-%% to_utf8(Code) when Code < 16#10000 -> to_utf8(Code, 3);
-%% to_utf8(Code) -> to_utf8(Code, 4).
+to_utf8(Code) when Code < 16#80 -> to_utf8(Code, 1);
+to_utf8(Code) when Code < 16#800 -> to_utf8(Code, 2);
+to_utf8(Code) when Code < 16#10000 -> to_utf8(Code, 3);
+to_utf8(Code) -> to_utf8(Code, 4).
 
-%% string_to_utf8(S) ->
-%%     flatten(map(fun to_utf8/1, S)).
-
+-compile({no_whistle,[string_to_utf8/1]}).
+string_to_utf8(S) ->
+    flatten(map(fun to_utf8/1, S)).
 
 atom_test() ->
     1 = case false of
@@ -271,3 +270,12 @@ guard_2_simplify_test() ->
 %%             [] -> 2;
 %%             [A|B] -> A
 %%         end.
+
+
+%% -compile({no_whistle,[foo/1]}).
+
+%% foo(Xs) ->
+%%     flatten(map(fun bar/1, Xs)).
+
+%% bar(X) ->
+%%     [X+1].

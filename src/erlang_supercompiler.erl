@@ -7,9 +7,10 @@ parse_transform(Forms, Options) ->
     Global = extract_functions(Forms),
     Fnames = lists:map(fun ({Name,_Arity}) -> Name end,
                        dict:fetch_keys(Global)),
-    Env0 = #env{%%forms = Forms,
-		global = Global,
-                seen_vars = sets:from_list(Fnames) },
+    NoWhistling = attrs(no_whistle, Forms),
+    Env0 = #env{global = Global,
+                seen_vars = sets:from_list(Fnames),
+                no_whistling = sets:from_list(NoWhistling)},
     Ret = forms(Forms, Env0),
     io:fwrite("After: ~p~n", [Ret]),
     Ret.
@@ -27,7 +28,10 @@ form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
     Env1 = Env0#env{bound = sets:new(),
                     seen_vars = Seen,
                     w=[], ls=[], found=[],
-                    name = atom_to_list(Name)},
+                    name = atom_to_list(Name),
+                    whistle_enabled =
+                        not sets:is_element({Name,Arity},
+                                            Env0#env.no_whistling)},
     {Env2,Expr1} = scp_expr:alpha_convert(Env1, Expr0),
     {Env,Expr2} = scp_main:drive(Env2, Expr1, []),
     {Expr,Letrecs} = scp_expr:extract_letrecs(Expr2),
@@ -37,6 +41,15 @@ form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
     {[Function|Functions],Env};
 form(X, Env) ->
     {[X],Env}.
+
+attrs(Name, [{attribute,_,compile,{Name,[X|Xs]}}|Fs]) ->
+    [X|Xs] ++ attrs(Name, Fs);
+attrs(Name, [{attribute,_,compile,{Name,X}}|Fs]) ->
+    [X|attrs(Name, Fs)];
+attrs(Name, [_|Fs]) ->
+    attrs(Name, Fs);
+attrs(_, []) ->
+    [].
 
 %% Go over the forms and extract the top-level functions.
 extract_functions(Forms) ->

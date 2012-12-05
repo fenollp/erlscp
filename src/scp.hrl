@@ -22,7 +22,9 @@
               seen_vars = sets:new(),
               %% The name of the function being supercompiled.
               name = "",
-              forms = []}).
+              %% The whistle can be disabled.
+              whistle_enabled = true,
+              no_whistling = sets:new()}).
 
 -define(IS_CONST_EXPR(E),
         element(1,E)=='integer';
