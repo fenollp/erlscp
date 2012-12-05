@@ -212,10 +212,23 @@ build(Env0, Expr, [#op_ctxt{line=Line, op=Op, e1=E1, e2=hole}|R]) ->        %R16
 build(Env0, Expr, [#call_ctxt{line=Line, args=Args0}|R]) -> %R17
     {Env,Args} = drive_list(Env0, fun drive/3, Args0),
     build(Env, scp_expr:make_call(Line,Expr,Args), R);
-%% build(Env0, Expr={var,_,_}, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R18
-%%     drive_case_variable(Env0, Line, Expr, Cs0, R);
+build(Env0, Expr={var,_,Name}, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R18
+    %% Try to substitute the variable for the pattern in clauses.
+    CRs = lists:map(fun (C0={clause,Lc,[P],G0,B0}) when
+                              ?IS_CONST_EXPR(P); element(1,P)=='var' ->
+                            %% TODO: investigate if this rule should
+                            %% be more powerful
+                            S = dict:from_list([{Name,P}]),
+                            io:fwrite("R18! Name=~p P=~p~nC0=~p R=~p~n",[Name,P,C0,R]),
+                            {scp_expr:subst(S, C0), ctxt_subst(S, R)};
+                        (C) ->
+                            %% Nothing interesting happened today.
+                            {C,R}
+                    end, Cs0),
+    {Cs,Rs} = lists:unzip(CRs),
+    build_case(Env0, Line, Expr, Cs, Rs);
 build(Env0, Expr, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R19
-    build_case_general(Env0, Line, Expr, Cs0, R);
+    build_case(Env0, Line, Expr, Cs0, lists:duplicate(length(Cs0), R));
 build(Env0, Expr, [#op1_ctxt{line=Line, op=Op}|R]) ->
     build(Env0, {op,Line,Op,Expr}, R);
 build(Env0, Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
@@ -224,29 +237,11 @@ build(Env0, Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
 build(Env, Expr, []) ->                         %R20
     {Env, Expr}.
 
-%% TODO:
-%% build_case_variable(Env0, Line, {var,Lc,V}, Cs0, R) ->
-%%     %% Drive every clause body in the R context, substituting in V
-%%     %% where possible.
-%%     {Cs1,Env1} = lists:mapfoldr(
-%%                    fun ({clause,Lc,H0,G0,B0},Env00) ->
-%%                            Vars = head_variables(H0),
-%%                            Env01 = extend_bound(Env00, Vars),
-%%                            B1 = scp_expr:list_to_block(Lc, B0),
-%%                            {Env02,B} = drive(Env01, B1, R),
-%%                            Env03 = Env02#env{bound=Env00#env.bound},
-%%                            {{clause,Lc,H0,G0,[B]},Env03}
-%%                    end,
-%%                    Env0, Cs0),
-%%     %% FIXME: find the new bindings going out of the case
-%%     Case = scp_expr:make_case(Line, Expr, Cs1),
-%%     {Env1, Case}.
-
-build_case_general(Env0, Line, Expr, Cs0, R) ->
+build_case(Env0, Line, Expr, Cs0, Rs) ->
     %% Drive every clause body in the R context.
     %% TODO: this should be doing simplifications
     {Cs1,Env1} = lists:mapfoldr(
-                   fun ({clause,Lc,H0,G0,B0},Env00) ->
+                   fun ({{clause,Lc,H0,G0,B0},R},Env00) ->
                            Vars = head_variables(H0),
                            Env01 = extend_bound(Env00, Vars),
                            B1 = scp_expr:list_to_block(Lc, B0),
@@ -254,7 +249,7 @@ build_case_general(Env0, Line, Expr, Cs0, R) ->
                            Env03 = Env02#env{bound=Env00#env.bound},
                            {{clause,Lc,H0,G0,[B]},Env03}
                    end,
-                   Env0, Cs0),
+                   Env0, lists:zip(Cs0,Rs)),
     %% FIXME: find the new bindings going out of the case expr
     Case = scp_expr:make_case(Line, Expr, Cs1),
     {Env1, Case}.
@@ -529,8 +524,25 @@ plug(Expr, []) ->
     Expr.
 
 %% Perform a substitution on a context.
-%% subst_ctxt() ->
-%%     ;
+ctxt_subst(S, [C=#call_ctxt{args=Xs}|R]) ->
+    [C#call_ctxt{args=[scp_expr:subst(S,X) || X <- Xs]}|
+     ctxt_subst(S, R)];
+ctxt_subst(S, [C=#case_ctxt{clauses=Xs}|R]) ->
+    [C#case_ctxt{clauses=[scp_expr:subst(S,X) || X <- Xs]}|
+     ctxt_subst(S, R)];
+ctxt_subst(S, [C=#match_ctxt{pattern=X}|R]) ->
+    [C#match_ctxt{pattern=scp_expr:subst(S,X)}|
+     ctxt_subst(S, R)];
+ctxt_subst(S, [C=#op_ctxt{e1=hole, e2=X}|R]) ->
+    [C#op_ctxt{e2=scp_expr:subst(S,X)}|
+     ctxt_subst(S, R)];
+ctxt_subst(S, [C=#op_ctxt{e1=X, e2=hole}|R]) ->
+    [C#op_ctxt{e1=scp_expr:subst(S,X)}|
+     ctxt_subst(S, R)];
+ctxt_subst(S, [C=#op1_ctxt{}|R]) ->
+    [C|ctxt_subst(S, R)];
+ctxt_subst(_, []) ->
+    [].
 
 %% Generalization.
 generalize(Env0, E1, E2) ->

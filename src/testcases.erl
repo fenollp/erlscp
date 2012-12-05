@@ -234,6 +234,14 @@ guard_2_simplify_test() ->
                 element(1, X)
         end.
 
+r18_test() ->
+    X = 1,
+    case X of
+        [] -> [x|X];
+        1 -> X+1-X;
+        Y -> X =:= Y
+    end.
+
 %% apt({Xs,Ys}) ->
 %%     case {Xs,Ys} of
 %%         {[]} -> Ys;
