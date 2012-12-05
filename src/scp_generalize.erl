@@ -36,7 +36,7 @@ dive(E) -> lists:flatten(subtrees(E)).
 %% Peeling matches subterms. Also known as coupling.
 peel(E1, E2, InFun) ->
     X = peel0(E1, E2, InFun),
-    %%io:fwrite("peel ~p~n     ~p =>   ~p~n",[E1,E2,X]),
+    %%?DEBUG("peel ~p~n     ~p =>   ~p~n",[E1,E2,X]),
     X.
 peel0(E1, E2, InFun) ->
     Type1 = erl_syntax:type(E1),
@@ -179,7 +179,7 @@ split_clauses(Env0, Line, Cs0) ->
 %% Returns the same sort of thing that split/2 returns.
 msg(Env, E1, E2) ->
     {Env1,E,S} = msg(Env, scp_expr:free_variables(Env#env.bound, E1), E1, E2),
-    io:fwrite("msg ~p~n    ~p =>~n ~p~nS: ~p~n",[E1,E2,E,S]),
+    ?DEBUG("msg ~p~n    ~p =>~n ~p~nS: ~p~n",[E1,E2,E,S]),
     {Env1,E,dict:from_list(S)}.
 
 msg(Env0, _, E={integer,_,I}, {integer,_,I}) ->
@@ -218,7 +218,7 @@ msg(Env0, Infvs, E1, E2) ->
 
 msg_default(Env0, Infvs, E1,E2) ->
     %% Just make a variable or a function that wraps all of E1.
-    io:fwrite("msg_default~nE1=~p~nE2=~p~n",[E1,E2]),
+    ?DEBUG("msg_default~nE1=~p~nE2=~p~n",[E1,E2]),
     {Env1,G} = scp_expr:gensym(Env0, "V"),
     Line = erl_syntax:get_pos(E1),
     case scp_expr:free_variables(Env0#env.bound, E1)--Infvs of

@@ -14,10 +14,6 @@
 
 -include("scp.hrl").
 
-%%-define(DEBUG(P,A), (io:fwrite(P,A))).
--define(DEBUG(P,A), (false)).
-
-
 %% List the variables used in a pattern.
 pattern_variables(Expr) ->
     sets:to_list(erl_syntax_lib:variables(Expr)).
@@ -46,25 +42,25 @@ guard_variables(G) ->
 find_constructor_clause(Bs, E, Cs) ->
     case fcc(Bs, E, Cs) of
         {ok,_,Lhss,Rhss,Body} ->
-            io:fwrite("fcc returns ~p", [{ok,Lhss,Rhss,Body}]),
+            ?DEBUG("fcc returns ~p", [{ok,Lhss,Rhss,Body}]),
             {ok,Lhss,Rhss,Body};
         X -> X
     end.
 fcc(Bs, E0, Cs0) ->
     %% XXX: in this instance simplify only needs to look at one or two
     %% paths
-    io:fwrite("fcc(Bs, ~p,~n ~p)~n",[E0,Cs0]),
+    ?DEBUG("fcc(Bs, ~p,~n ~p)~n",[E0,Cs0]),
     case simplify(Bs, E0, Cs0) of
         {_,_,[]} ->
             %% All the clauses just disappeared, so there is no body
             %% and this probably is probably going to be a runtime
             %% error.
-            io:fwrite("fcc all clauses gone~n"),
+            ?DEBUG("fcc all clauses gone~n",[]),
             false;
         {{nil,_},nothing,[{{clause,L,[{nil,_}],[],Body},nothing}]} ->
             %% Now nothing remains of the case expression but a single
             %% body.
-            io:fwrite("fcc: body: ~p~n",[Body]),
+            ?DEBUG("fcc: body: ~p~n",[Body]),
             {ok,L,[],[],Body};
         {E0,nothing,SCs} ->
             %% The expression didn't change, but if the clauses
@@ -84,7 +80,7 @@ fcc(Bs, E0, Cs0) ->
             %% clauses were modified accordingly. Right now there are
             %% possibly more clauses remaining, each with its own Lhs
             %% for the extracted Rhs.
-            io:fwrite("fcc extracts an expression!~n E: ~p~n Rhs: ~p~n SCs: ~p~n", [E,Rhs,SCs]),
+            ?DEBUG("fcc extracts an expression!~n E: ~p~n Rhs: ~p~n SCs: ~p~n", [E,Rhs,SCs]),
             %% Simplify the rest of the case expression, remembering
             %% which Lhs each clause used.
             ASCs = [{clause,{Lhs,L},P,G,B} || {{clause,L,P,G,B},Lhs} <- SCs],
@@ -100,7 +96,7 @@ fcc(Bs, E0, Cs0) ->
             end;
         X ->
             %% Something more clever happened.
-            io:fwrite("fcc default: E=~p~n X=~p~n", [E0,X]),
+            ?DEBUG("fcc default: E=~p~n X=~p~n", [E0,X]),
             false
     end.
 

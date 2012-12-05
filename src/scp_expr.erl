@@ -433,7 +433,7 @@ letrec_destruct({'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}) ->
 
 find_renaming(Env, Expr) ->
     %% TODO: check if it's necessary to know which names are bound
-    io:fwrite("Is ~p a renaming of something in~n ~p?~n",[Expr,Env#env.ls]),
+    ?DEBUG("Is ~p a renaming of something in~n ~p?~n",[Expr,Env#env.ls]),
     find_renaming_1(sets:new(), Env#env.ls, Expr).
 
 find_renaming_1(B, [{Fname,E}|Es], Expr) ->
@@ -450,11 +450,11 @@ find_renaming_1(_B, [], Expr) ->
 is_renaming(B, E1, E2) ->
     case find_var_subst(B, [{E1,E2}]) of
         {ok,S} ->
-            io:fwrite("is_renaming.~nE1: ~p~nE2: ~p~n", [E1,E2]),
-            io:fwrite("S: ~p~n",[S]),
+            ?DEBUG("is_renaming.~nE1: ~p~nE2: ~p~n", [E1,E2]),
+            ?DEBUG("S: ~p~n",[S]),
             %% FIXME: for 'fun' to work, does this need to use a
             %% subst() that does not check the scoping rules?
-            io:fwrite("Afterwards: ~p~n", [subst(dict:from_list(S), E2)]),
+            ?DEBUG("Afterwards: ~p~n", [subst(dict:from_list(S), E2)]),
             subst(dict:from_list(S), E2) == E2;
         _ ->
             false
@@ -529,23 +529,23 @@ find_var_subst(B0, [{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T])
        length(Gs1) == length(Gs2) andalso
        length(Bs1) == length(Bs2) ->
             %% Extract new bindings from the patterns and add them to B0.
-            %% io:fwrite("Ps1=~p~nPs2=~p~n",[Ps1,Ps2]),
-            %% io:fwrite("Work=~p~n",[[{E1,E2}] ++ lists:zip(Ps1,Ps2)]),
+            %% ?DEBUG("Ps1=~p~nPs2=~p~n",[Ps1,Ps2]),
+            %% ?DEBUG("Work=~p~n",[[{E1,E2}] ++ lists:zip(Ps1,Ps2)]),
             case find_var_subst(B0, [{E1,E2}] ++ lists:zip(Ps1,Ps2)) of
                 {ok,Ss} ->
-                    %%io:fwrite("Ss=~p~n",[Ss]),
+                    %%?DEBUG("Ss=~p~n",[Ss]),
                     %% The variables from Ps1 and Ps2 are bound in the
                     %% rest of the work. This is imprecise, but alpha
                     %% conversion should make it work.
                     Vars = lists:flatmap(fun scp_pattern:pattern_variables/1,
                                          Ps1 ++ Ps1),
-                    %%io:fwrite("Vars=~p~n",[Vars]),
+                    %%?DEBUG("Vars=~p~n",[Vars]),
                     B = sets:union(sets:from_list(Vars), B0),
                     Bodies = lists:flatmap(fun ({Body1,Body2}) ->
                                                lists:zip(Body1,Body2)
                                            end,
                                            lists:zip(Bs1, Bs2)),
-                    %% io:fwrite("new work=~p~n", [lists:zip(Gs1, Gs2) ++
+                    %% ?DEBUG("new work=~p~n", [lists:zip(Gs1, Gs2) ++
                     %%                                 Bodies ++ T]),
                     %% Processing the patterns may have resulted in
                     %% new variable substitutions. Apply these to the
@@ -573,10 +573,10 @@ find_var_subst(B0, [{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T])
 %%             case find_var_subst(B0, lists:zip(Ps1,Ps2)) of
 %%                 {ok,Ss} ->
 %%                     Sd = dict:from_list(Ss),
-%%                     io:fwrite("S: ~p~n",[dict:to_list(Sd)]),
+%%                     ?DEBUG("S: ~p~n",[dict:to_list(Sd)]),
 %%                     Paired = lists:zipwith(fun (E1,E2) -> {E1, subst(Sd,E2)} end,
 %%                                            Es1, Es2),
-%%                     io:fwrite("Paired: ~p~n",[Paired]),
+%%                     ?DEBUG("Paired: ~p~n",[Paired]),
 %%                     find_var_subst(B0, Paired ++ T);
 %%                 _ -> false
 %%             end;
@@ -588,7 +588,7 @@ find_var_subst(B, [{E1,E2}|T]) ->
     %% renaming.
     T1 = erl_syntax:type(E1),
     T2 = erl_syntax:type(E2),
-    io:fwrite("r fallthrough: ~p,~p~n",[T1,T2]),
+    ?DEBUG("r fallthrough: ~p,~p~n",[T1,T2]),
     case T1 == T2 of
         true ->
             %% XXX: Fill in all supported expression types here. This
@@ -641,7 +641,7 @@ terminates(Env, _) -> false.
 is_linear('_', _) -> true;
 is_linear(N, E) ->
     %% TODO
-    io:fwrite("is_linear ~p ~p~n",[N,E]),
+    ?DEBUG("is_linear ~p ~p~n",[N,E]),
     %% lin(N, E) =< 1.
     true.
 
@@ -657,7 +657,7 @@ is_strict('_', _) -> false;
 is_strict(N, {var,_,N}) -> true;
 is_strict(N, E) ->
     %% TODO
-    io:fwrite("is_strict ~p ~p~n",[N,E]),
+    ?DEBUG("is_strict ~p ~p~n",[N,E]),
     true.
 
 %% Constant folding.

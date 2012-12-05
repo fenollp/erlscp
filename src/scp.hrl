@@ -34,3 +34,6 @@
             element(1,E)=='char';
             element(1,E)=='nil';
             element(1,E)=='tuple', element(3,E)==[]).
+
+%%-define(DEBUG(P,A), (io:fwrite(P,A))).
+-define(DEBUG(P,A), (false)).

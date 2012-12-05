@@ -78,7 +78,7 @@ drive(Env0, E={'fun',Lf,{function,G,Arity}}, R=[#call_ctxt{args=Args}|_])
 drive(Env0, E0={constructor,L,Cons},
       Ctxt=[#call_ctxt{args=Args},#case_ctxt{clauses=Cs0}|R]) -> %R4
     E = scp_expr:make_call(L, E0, Args),
-    io:fwrite("Known constructor in a case.~n~p~n~p~n",[E,Ctxt]),
+    ?DEBUG("Known constructor in a case.~n~p~n~p~n",[E,Ctxt]),
     case scp_pattern:find_constructor_clause(Env0#env.bound, E, Cs0) of
         {ok,Lhss,Rhss,Body} ->
             %% FIXME: if one Lhs was defined by every clause then this
@@ -103,7 +103,7 @@ drive(Env0, {'fun',_,{clauses,[{clause,_,[LhsV={var,_,Lhs}],[],Body0}]}},
       [#call_ctxt{line=L,args=[Rhs]}|R]) ->     %R7/R8/R9
     %% Let.
     Body1 = scp_expr:list_to_block(L, Body0),
-    io:fwrite("let!!!~n Lhs=~p Rhs=~p Body=~p~n",[Lhs,Rhs,Body1]),
+    ?DEBUG("let!!!~n Lhs=~p Rhs=~p Body=~p~n",[Lhs,Rhs,Body1]),
     %% FIXME: Also ensure that Lhs is not used improperly in a pattern
     %% or guard.
     case scp_expr:terminates(Env0, Rhs)
@@ -114,7 +114,7 @@ drive(Env0, {'fun',_,{clauses,[{clause,_,[LhsV={var,_,Lhs}],[],Body0}]}},
             drive(Env0, E, R);
         _ ->
             %% TODO: is this tested?
-            io:fwrite("residual let.~n",[]),
+            ?DEBUG("residual let.~n",[]),
             {Env1,NewRhs} = drive(Env0, Rhs, []),
             Env2 = extend_bound(Env1, sets:from_list([Lhs])),
             {Env3,Body} = drive(Env2, Body1, R),
@@ -129,7 +129,7 @@ drive(Env0, E0={'fun',_,{clauses,Cs0}}, Ctxt=[#call_ctxt{line=Lc,args=As}|R]) ->
     %% becomes a let.
     case lists:all(fun ({clause,_,Ps,_,_}) -> length(Ps) == length(As) end, Cs0) of
         true ->
-            %%io:fwrite("inline. Cs0=~p~nAs=~p~n",[Cs0,As]),
+            %%?DEBUG("inline. Cs0=~p~nAs=~p~n",[Cs0,As]),
             {ok,Lhss,Rhss,CaseE,Cs} = scp_pattern:partition(Lc, Cs0, As),
             {Env,Case} = scp_expr:alpha_convert(Env0, scp_expr:make_case(Lc, CaseE, Cs)),
             E = scp_expr:make_let(Lc, Lhss, Rhss, [Case]),
@@ -199,8 +199,8 @@ drive(Env0, {'if',L,Cs}, R) ->
 
 %% Fallthrough.
 drive(Env0, Expr, R) ->                         %R14
-    io:fwrite("~n%% Fallthrough!~n", []),
-    io:fwrite("%% Expr: ~p~n%% R: ~p~n", [Expr, R]),
+    ?DEBUG("~n%% Fallthrough!~n", []),
+    ?DEBUG("%% Expr: ~p~n%% R: ~p~n", [Expr, R]),
     build(Env0, Expr, R).
 
 %% Rebuilding expressions.
@@ -219,7 +219,7 @@ build(Env0, Expr={var,_,Name}, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R18
                             %% TODO: investigate if this rule should
                             %% be more powerful
                             S = dict:from_list([{Name,P}]),
-                            io:fwrite("R18! Name=~p P=~p~nC0=~p R=~p~n",[Name,P,C0,R]),
+                            ?DEBUG("R18! Name=~p P=~p~nC0=~p R=~p~n",[Name,P,C0,R]),
                             {scp_expr:subst(S, C0), ctxt_subst(S, R)};
                         (C) ->
                             %% Nothing interesting happened today.
@@ -315,15 +315,15 @@ drive_clause(Env0, {clause,L,Head,Guard,Body0}, _) ->
 %% doesn't work, make a new function.
 drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
     %% It is safe to return {Env0,L} if things become difficult.
-    io:fwrite("Call: ~p, ~w/~w, R: ~p~n", [Funterm,Name,Arity,R]),
-    io:fwrite("Fun: ~p~n", [Fun0]),
+    ?DEBUG("Call: ~p, ~w/~w, R: ~p~n", [Funterm,Name,Arity,R]),
+    ?DEBUG("Fun: ~p~n", [Fun0]),
     L = plug(Funterm, R),
     FV = scp_expr:free_variables(Env0#env.bound, L),
     %% First try to find a renaming.
     case scp_expr:find_renaming(Env0, L) of
         {ok,Fname} ->
             %% L is a renaming of an old expression.
-            io:fwrite("Folding. Fname=~p, FV=~p~n",[Fname,FV]),
+            ?DEBUG("Folding. Fname=~p, FV=~p~n",[Fname,FV]),
             Expr={'call',Line,{atom,Line,Fname},[{var,Line,X} || X <- FV]},
             {Env0#env{found=[Fname|Env0#env.found]},Expr};
         _ ->
@@ -331,14 +331,14 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
             case Env0#env.whistle_enabled
                 andalso scp_generalize:find_homeomorphic_embeddings(Env0, L) of
                 {ok,Embeddings} ->
-                    io:fwrite("The whistle! ~p~n", [Embeddings]),
-                    io:fwrite("L: ~p~n", [L]),
+                    ?DEBUG("The whistle! ~p~n", [Embeddings]),
+                    ?DEBUG("L: ~p~n", [L]),
                     Refl = lists:filter(
                              fun ({_Fname,OldExpr}) ->
                                      scp_generalize:whistle(L, OldExpr)
                              end,
                              Embeddings),
-                    io:fwrite("Refl: ~p~n", [Refl]),
+                    ?DEBUG("Refl: ~p~n", [Refl]),
                     case Refl of
                         [] ->
                             %% Generalize against the old expression.
@@ -348,7 +348,7 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
                             %% Upwards generalization.
                             {Env1,G} = scp_expr:gensym(Env0, "Intermediate"),
                             Env2 = Env1#env{w=[{Fname,L}|Env1#env.w]},
-                            io:fwrite("Upwards generalization. W=~p~n",[Env2#env.w]),
+                            ?DEBUG("Upwards generalization. W=~p~n",[Env2#env.w]),
                             {Env2,{var,Line,G}}
                     end;
                 _ ->
@@ -357,17 +357,17 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
                     {Env2,Fun} = scp_expr:alpha_convert(Env1, Fun0),
                     %% Remember that Fname came from the expression L.
                     Env3 = Env2#env{ls = [{Fname,L}|Env2#env.ls]},
-                    io:fwrite("Before: ~p~nAfter: ~p~n", [Fun0,Fun]),
+                    ?DEBUG("Before: ~p~nAfter: ~p~n", [Fun0,Fun]),
                     %% Drive the fun in the original context. If the context is a
                     %% call_ctxt then this might do inlining.
                     {Env4,E} = drive(Env3, Fun, R),
-                    io:fwrite("After driving the fun: ~p~n", [E]),
+                    ?DEBUG("After driving the fun: ~p~n", [E]),
                     {Env5,S} = scp_expr:fresh_variables(Env4, dict:new(), FV),
                     %% The line numbers are probably going to be a bit wrong.
-                    io:fwrite("W? ~p ~p~n",[Fname, Env5#env.w]),
+                    ?DEBUG("W? ~p ~p~n",[Fname, Env5#env.w]),
                     case lists:keysearch(Fname, 1, Env5#env.w) of
                         {value, {_, Expr}} ->
-                            io:fwrite("Upwards generalization. ~p~n",[Expr]),
+                            ?DEBUG("Upwards generalization. ~p~n",[Expr]),
                             Env6 = Env0#env{seen_vars=Env5#env.seen_vars},
                             generalize(Env6, L, Expr);
                         _ ->
@@ -382,21 +382,21 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
                                     {Env6,E};
                                 _ ->
                                     Head = [scp_expr:subst(S, {var,Line,X}) || X <- FV],
-                                    %% io:fwrite("S: ~p~n", [S]),
-                                    %% io:fwrite("Free variables in ~p: ~w~n", [L,FV]),
-                                    %% io:fwrite("Head: ~p~n",[Head]),
+                                    %% ?DEBUG("S: ~p~n", [S]),
+                                    %% ?DEBUG("Free variables in ~p: ~w~n", [L,FV]),
+                                    %% ?DEBUG("Head: ~p~n",[Head]),
                                     Guard = [],
-                                    %% io:fwrite("E: ~p~n",[E]),
+                                    %% ?DEBUG("E: ~p~n",[E]),
                                     Body = scp_expr:subst(S, E),
                                     NewFun0 = {'fun',Line,
                                                {clauses,
                                                 [{clause,Line,Head,Guard,[Body]}]}},
                                     NewTerm = {'call',Line,{atom,Line,Fname},
                                                [{var,Line,X} || X <- FV]},
-                                    io:fwrite("NewFun0: ~p~n",[NewFun0]),
-                                    io:fwrite("NewTerm: ~p~n",[NewTerm]),
+                                    ?DEBUG("NewFun0: ~p~n",[NewFun0]),
+                                    ?DEBUG("NewTerm: ~p~n",[NewTerm]),
                                     {Env6,NewFun} = scp_expr:alpha_convert(Env5, NewFun0),
-                                    io:fwrite("NewFun: ~p~n",[NewFun]),
+                                    ?DEBUG("NewFun: ~p~n",[NewFun]),
                                     %% This letrec will become a top-level function later.
                                     Letrec = scp_expr:make_letrec(Line,
                                                                   [{Fname,length(FV),NewFun}],
@@ -442,7 +442,7 @@ drive_BIF(Env, E, R) ->
 %%             drive(Env0, E, [CR#case_ctxt{clauses=Cs}|R]);
 %%         {E,Rhs0,SCs} ->
 %%             %% An expression was removed from the constructor.
-%%             io:fwrite("Stuff happens: E=~p~n Rhs0=~p~n SCs=~p~n", [E,Rhs0,SCs]),
+%%             ?DEBUG("Stuff happens: E=~p~n Rhs0=~p~n SCs=~p~n", [E,Rhs0,SCs]),
 %%             Cs1 = rebuild_clauses(Env0, Rhs0, SCs),
 %%             case lists:member(false, Cs1) of
 %%                 %% true ->
@@ -454,7 +454,7 @@ drive_BIF(Env, E, R) ->
 %%                 %%     %% TODO: check that this works. Also check if it
 %%                 %%     %% would work better to make the block and then do
 %%                 %%     %% driving on that instead.
-%%                 %%     io:fwrite("Stuff happening~n"),
+%%                 %%     ?DEBUG("Stuff happening~n"),
 %%                 %%     {Env1,Rhs} = drive(Env0, Rhs0, []),
 %%                 %%     {Env2,Var} = scp_expr:gensym(Env1, "P"),
 %%                 %%     Cs2 = rebuild_clauses(Env2, {var,Line,Var}, SCs),
@@ -462,7 +462,7 @@ drive_BIF(Env, E, R) ->
 %%                 %%     Env = extend_bound(Env2, sets:from_list([Var])),
 %%                 %%     Case = drive(Env, E, [CR#case_ctxt{clauses=Cs2}|R]),
 %%                 %%     NewE = scp_expr:make_block(Match, Case),
-%%                 %%     io:fwrite("Stuff happened: NewE=~p~n", [NewE]),
+%%                 %%     ?DEBUG("Stuff happened: NewE=~p~n", [NewE]),
 %%                 %%     NewE;
 %%                 false ->
 %%                     NewCtxt = [CR#case_ctxt{clauses=Cs1}|R],
@@ -472,17 +472,17 @@ drive_BIF(Env, E, R) ->
 %%                         true ->
 %%                             %% Lhs=nothing for all SCs, must
 %%                             %% residualize Rhs for effect.
-%%                             io:fwrite("Residualized Rhs0=~p Cs1=~p~n", [Rhs0, Cs1]),
+%%                             ?DEBUG("Residualized Rhs0=~p Cs1=~p~n", [Rhs0, Cs1]),
 %%                             drive(Env0, scp_expr:make_block(Line, Rhs0, E), NewCtxt);
 %%                         false ->
 %%                             %% Lhs in each clause was substituted for Rhs.
-%%                             io:fwrite("Stuff was easy. Cs1=~p~n",[Cs1]),
+%%                             ?DEBUG("Stuff was easy. Cs1=~p~n",[Cs1]),
 %%                             drive(Env0, E, NewCtxt)
 %%                     end
 %%             end;
 %%         Foo ->
 %%             %% Something more clever happened.
-%%             io:fwrite("constructor case default: E=~p~n Ctxt=~p~n Foo=~p~n", [E0,Ctxt,Foo]),
+%%             ?DEBUG("constructor case default: E=~p~n Ctxt=~p~n Foo=~p~n", [E0,Ctxt,Foo]),
 %%             build(Env0, E0, Ctxt)
 %%     end.
 
@@ -546,14 +546,14 @@ ctxt_subst(_, []) ->
 
 %% Generalization.
 generalize(Env0, E1, E2) ->
-    io:fwrite("gen: ~p ~n    ~p~n",[E1,E2]),
+    ?DEBUG("gen: ~p ~n    ~p~n",[E1,E2]),
     {Env1,Expr0,Subst0} = case scp_generalize:msg(Env0, E1, E2) of
                               {_,{var,_,_},_} ->
-                                  io:fwrite("splitting instead~n"),
+                                  ?DEBUG("splitting instead~n",[]),
                                   scp_generalize:split(Env0, E1);
                               X -> X
                           end,
-    io:fwrite("Expr0: ~p~nSubst0: ~p~n",[Expr0,dict:to_list(Subst0)]),
+    ?DEBUG("Expr0: ~p~nSubst0: ~p~n",[Expr0,dict:to_list(Subst0)]),
     SplitVars = dict:fetch_keys(Subst0),
     SplitVarsSet = sets:from_list(SplitVars),
     %% Expr0 is a simpler version of E1.
@@ -572,7 +572,7 @@ generalize(Env0, E1, E2) ->
     %% Apply the new substitution to the driven simplification of E1.
     %% The subexpressions of E1 and E1 itself has now been driven in
     %% the empty context.
-    io:fwrite("Expr1: ~p~nSubst: ~p~n",[Expr1,dict:to_list(Subst)]),
+    ?DEBUG("Expr1: ~p~nSubst: ~p~n",[Expr1,dict:to_list(Subst)]),
     Expr = scp_expr:subst(Subst, Expr1),
     %% The bindings going out is the union of the new bindings in Expr
     %% and the split expressions.

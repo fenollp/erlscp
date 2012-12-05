@@ -3,7 +3,7 @@
 -include("scp.hrl").
 
 parse_transform(Forms, Options) ->
-    io:fwrite("Before: ~p~n", [Forms]),
+    ?DEBUG("Before: ~p~n", [Forms]),
     Global = extract_functions(Forms),
     Fnames = lists:map(fun ({Name,_Arity}) -> Name end,
                        dict:fetch_keys(Global)),
@@ -12,7 +12,7 @@ parse_transform(Forms, Options) ->
                 seen_vars = sets:from_list(Fnames),
                 no_whistling = sets:from_list(NoWhistling)},
     Ret = forms(Forms, Env0),
-    io:fwrite("After: ~p~n", [Ret]),
+    ?DEBUG("After: ~p~n", [Ret]),
     Ret.
 
 forms(Forms0, Env) ->
@@ -21,7 +21,7 @@ forms(Forms0, Env) ->
 
 form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
     %% TODO: what parts of the environment should be reset?
-    io:fwrite("~n~nLooking at function: ~w/~w~n", [Name, Arity]),
+    ?DEBUG("~n~nLooking at function: ~w/~w~n", [Name, Arity]),
     Expr0 = scp_expr:function_to_fun(F),
     Seen = sets:union(Env0#env.seen_vars,
                       erl_syntax_lib:variables(Expr0)),
