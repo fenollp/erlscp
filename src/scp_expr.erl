@@ -8,9 +8,10 @@
          list_to_block/2, make_block/3, result_exp/1,
          make_case/3, make_if/2, make_call/3, make_let/4,
          function_to_fun/1, fun_to_function/3,
+         delete_duplicates/1,
          variables/1, free_variables/2, subst/2,
          matches/1,
-         fresh_variables/3, gensym/2,
+         fresh_variables/3, gensym/2, gensym_name/1,
          alpha_convert/2,
          make_letrec/3, extract_letrecs/1, letrec_destruct/1,
          find_renaming/2,
@@ -111,7 +112,7 @@ function_to_fun({function,Line,_Name,_Arity,Clauses}) ->
 fun_to_function({'fun',Line,{clauses,Clauses}},Name,Arity) ->
     {function,Line,Name,Arity,Clauses}.
 
-delete_duplicates([X|Xs]) -> [X|[Y || Y <- Xs, X =/= Y]];
+delete_duplicates([X|Xs]) -> [X|delete_duplicates([Y || Y <- Xs, X =/= Y])];
 delete_duplicates([]) -> [].
 
 %% Find the free variables of an expression, in a stable order.
@@ -153,13 +154,19 @@ matches0(Expr) ->
 %% Generate a fresh variable.
 gensym(Env0, Prefix) ->
     F = fun (N) ->
-                X = lists:takewhile(fun (C) -> C =/= $@ end, Prefix) ++
-                    "@" ++ integer_to_list(N),
+                X = gensym_name(Prefix) ++ "@" ++ integer_to_list(N),
                 list_to_atom(X)
         end,
     Name = erl_syntax_lib:new_variable_name(F, Env0#env.seen_vars),
     Env = Env0#env{seen_vars=sets:add_element(Name, Env0#env.seen_vars)},
     {Env,Name}.
+
+%% Get the name part of a gensym variable (or the whole variable if
+%% it's just a variable).
+gensym_name(V) when is_list(V) ->
+    lists:takewhile(fun (C) -> C =/= $@ end, V);
+gensym_name(V) when is_atom(V) ->
+    gensym_name(atom_to_list(V)).
 
 fresh_variables(Env0,S0,Names) ->
     %% Updates the substitution dict S0 with fresh variables for Names.
