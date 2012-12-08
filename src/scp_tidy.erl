@@ -10,7 +10,8 @@
 function(X0) ->
     X1 = flatten_bodies(X0),
     X2 = lift_cases(X1),
-    erl_syntax:revert(X2).
+    X3 = nicer_names(X2),
+    erl_syntax:revert(X3).
 
 %% Remove block expressions from clause bodies.
 flatten_bodies(E0) ->
@@ -82,8 +83,6 @@ try_lift([C]) ->
                             tuple ->
                                 Vars = erl_syntax:tuple_elements(Arg),
                                 try_lift_tuple(Ps, Vars, Cs);
-                            %% nil ->
-                            %%     ;
                             _ ->
                                 false
                         end
@@ -144,9 +143,61 @@ not_used_elsewhere([Name|Ns], Cs) ->
         andalso not_used_elsewhere(Ns, Cs);
 not_used_elsewhere([], _) -> true.
 
-%% TODO: Nicer variable names. Extract all the variables from the
+%% Nicer variable names. Fun is a top-level function (represented as a
+%% fun expr), so it's a closed expression, which makes things easy.
+%% Different clauses can use the same names without problem.
+nicer_names(F0) ->
+%% Extract all the variables from the
 %% expression and make a dict containing new unique and nicer names,
 %% then do a renaming with erl_syntax:map/2.
+    Cs = lists:map(fun rename_clause/1,
+                   erl_syntax:fun_expr_clauses(F0)),
+    F = erl_syntax:fun_expr(Cs),
+    erl_syntax:copy_attrs(F0, F).
+
+rename_clause(C) ->
+    OldNames = scp_expr:delete_duplicates(scp_expr:variables(C)),
+    Prefixes = [drop_suffix(scp_expr:gensym_name(N)) || N <- OldNames],
+    %% io:fwrite("OldNames = ~p,~nPrefixes = ~p;~n", [OldNames,Prefixes]),
+    {Subst,_} =
+        lists:mapfoldl(fun ({Old,Prefix}, {Prefix,N}) ->
+                               %% Same prefix as the previous name.
+                               NewName = Prefix ++ integer_to_list(N),
+                               {{Old,NewName},{Prefix,N + 1}};
+                           ({Old,"_"}, _) ->
+                               %% Don't rename anything to just _.
+                               {{Old,"_0"},{"_",1}};
+                           ({Old,Prefix}, _) ->
+                               %% Reset the counter.
+                               {{Old,Prefix},{Prefix,0}}
+                       end,
+                       {'',0},
+                       lists:keysort(2, lists:zip(OldNames, Prefixes))),
+    rename(dict:from_list(Subst), C).
+
+%% Drop the number suffix from a string.
+drop_suffix(Str) ->
+    %% XXX: this turns _1 into _.
+    lists:reverse(lists:dropwhile(fun (C) -> (C >= $0) and (C =< $9) end,
+                                  lists:reverse(Str))).
+
+%% Straight up renaming variables without any regard for scoping.
+rename(S, E) ->
+    erl_syntax_lib:map(
+      fun (Node) ->
+              case erl_syntax:type(Node) of
+                  variable ->
+                      case dict:find(erl_syntax:variable_name(Node), S) of
+                          {ok,NewName} ->
+                              V = erl_syntax:variable(NewName),
+                              erl_syntax:copy_attrs(Node, V);
+                          _ ->
+                              Node
+                      end;
+                  _ ->
+                      Node
+              end
+      end, E).
 
 %% TODO: after tidying single functions, go over all the remaining
 %% functions and see if e.g. ap@N/2 happens to be a renaming of ap/2.
