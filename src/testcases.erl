@@ -1,8 +1,8 @@
 -module(testcases).
 -export([ap/2, ap/3,
          rev/2, map/2, zip/2, flatten/1,
-         sum/1, double/1,
-         square/1, sumsqs/1,
+         double/1,
+         sum/1, square/1, sumsqs/1, iota/2, sumsq/1,
          to_utf8/1, string_to_utf8/1
         ]).
 -include("scp.hrl").
@@ -38,6 +38,14 @@ sum([]) -> 0;
 sum([X|Xs]) -> X + sum(Xs).
 sumsqs(Xs) ->
     sum(map(fun square/1, Xs)).
+
+iota(I, N) when I > N ->
+    [];
+iota(I, N) ->
+    [I|iota(I+1, N)].
+
+sumsq(N) ->
+    sumsqs(iota(1, N)).
 
 %% Requires the whistle.
 rev([],Ys) -> Ys;
@@ -248,6 +256,10 @@ r18_underscore_test() ->
         [] -> [x|X];
         _ -> X
     end.
+
+let_test() ->
+    ?LET(X, fun (Y) -> Y end(1),
+         {X,X}).
 
 %% apt({Xs,Ys}) ->
 %%     case {Xs,Ys} of
