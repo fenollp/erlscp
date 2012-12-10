@@ -4,9 +4,11 @@
          double/1,
          sum/1, square/1, sumsqs/1, iota/2, sumsq/1,
          zipmap/4, mapsq/1, f/1, g/1, mapsq2/1, sumf/1,
+         zipwith/3, vecdot/2,
          to_utf8/1, string_to_utf8/1,
          same_length/2
         ]).
+-include("scp.hrl").                            %merely enables EUnit
 -compile({parse_transform, erlang_supercompiler}).
 
 ap([],Ys) -> Ys;
@@ -67,6 +69,20 @@ g([]) -> [];
 g([X|Xs]) -> [3*X|f(Xs)].
 mapsq2(Xs) -> mapsq(mapsq(Xs)).
 sumf(Xs) -> sum(f(Xs)).
+
+%% Another example shown in Jonsson's thesis.
+zipwith(Fun, [X|Xs], Ys0) ->
+    case Ys0 of
+        [] -> Ys0;
+        [Y|Ys] ->
+            [Fun(X, Y)|zipwith(Fun, Xs,Ys)]
+    end;
+zipwith(_Fun, _, _) -> [].
+mult(X, Y) ->
+    X * Y.
+vecdot(Xs, Ys) ->
+    %% TODO: sum(zipwith(fun (X, Y) -> X * Y end, Xs, Ys))
+    sum(zipwith(fun mult/2, Xs, Ys)).
 
 %% lc_test() ->
 %%     [X || X <- [1,2,a,3,4,b,5,6], integer(X), X > 3].
