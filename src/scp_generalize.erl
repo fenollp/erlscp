@@ -188,6 +188,8 @@ msg(Env0, _, E={nil,_}, {nil,_}) ->
     {Env0,E,[]};
 msg(Env0, _, E={var,_,N}, {var,_,N}) ->
     {Env0,E,[]};
+msg(Env0, _, E={'fun',_,{function,N,A}}, {'fun',_,{function,N,A}}) ->
+    {Env0,E,[]};
 msg(Env0, Infvs, {cons,L,H1,T1},{cons,_,H2,T2}) ->
     {Env1,H,S1} = msg(Env0, Infvs, H1, H2),
     {Env2,T,S2} = msg(Env1, Infvs, T1, T2),
