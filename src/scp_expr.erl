@@ -84,15 +84,15 @@ make_let(Line, [Lhs|Lhss], [Rhs|Rhss], Body0) ->
     Body = make_let(Line, Lhss, Rhss, Body0),
     Fun = {'fun',Line,{clauses,[{clause,Line,[Lhs],[],[Body]}]}},
     {call,Line,Fun,[Rhs]};
-make_let(Line, [], [], Body) ->
+make_let(Line, [], [], Body) when is_list(Body) ->
     list_to_block(Line, Body).
 
-%% Make a function call, but try some simplifications first and handle
-%% the artificial constructor expressions.
-make_call(Line, {constructor,L,cons}, [H,T]) ->
-    {cons,L,H,T};
-make_call(Line, {constructor,L,tuple}, As) ->
-    {tuple,L,As};
+%% Make a function call, but handle the artificial constructor
+%% expressions and try some simplifications first.
+make_call(Line, {constructor,_,cons}, [H,T]) ->
+    {cons,Line,H,T};
+make_call(Line, {constructor,_,tuple}, As) ->
+    {tuple,Line,As};
 make_call(Line, {'atom',_,element}, [{integer,_,I},{tuple,_,Es}])
   when I > 0, I =< length(Es) ->
     %% Need to residualize the rest of Es for effect.
@@ -430,7 +430,7 @@ extrecs_1(E,Ls) ->
 %% Returns the bindings and the body a letrec.
 letrec_destruct({'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}) ->
     {cons,_,{tuple,_,Bs0},{tuple,_,Body}} = Arg,
-    %Bs1 = [{Name,Arity,Fun} || {tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]} <- Bs0],
+    %% Bs1 = [{Name,Arity,Fun} || {tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]} <- Bs0],
     Bs1 = lists:map(fun ({tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]}) ->
                             {Name,Arity,Fun}
                     end, Bs0),
@@ -632,40 +632,120 @@ terminates(Env, {var,_,N}) ->
     %% If a variable is in split_vars it could represent any kind of
     %% expression whatsoever. This would represent the guard in R8.
     not lists:member(N, Env#env.split_vars);
-terminates(Env, {integer,_,_}) -> true;
-terminates(Env, {float,_,_}) -> true;
-terminates(Env, {atom,_,_}) -> true;
-terminates(Env, {string,_,_}) -> true;
-terminates(Env, {char,_,_}) -> true;
-terminates(Env, {nil,_}) -> true;
+terminates(Env, E) when ?IS_CONST_EXPR(E) -> true;
 terminates(Env, {'fun',_,_}) -> true;
+terminates(Env, {cons,_,H,T}) ->
+    terminates(Env, H) andalso terminates(Env, T);
+terminates(Env, {tuple,_,Es}) ->
+    lists:all(fun (E) -> terminates(Env, E) end, Es);
 %% TODO: make this stronger
-terminates(Env, _) -> false.
+terminates(Env, _E) ->
+    ?DEBUG("does not terminate? ~p~n", [_E]),
+    false.
 
 %% Is the variable N linear in E? It is if it's guaranteed that N will
-%% be evaluated at most once in E. E must have been alpha converted.
-%% XXX: what about patterns?
-is_linear('_', _) -> true;
+%% be evaluated at most once in E. It's alright if E doesn't terminate
+%% before coming to N. E must have been alpha converted.
+is_linear('_', _) ->
+    true;
 is_linear(N, E) ->
-    %% TODO
     ?DEBUG("is_linear ~p ~p~n",[N,E]),
-    %% lin(N, E) =< 1.
-    true.
+    lin(N, E) =< 1.
 
-lin(N, {var,_,N}) ->
-    1;
-lin(_, {var,_,_}) ->
-    0.
+lin(N, E) ->
+    case erl_syntax:type(E) of
+        variable ->
+            case erl_syntax:variable_name(E) of
+                N -> 1;
+                _ -> 0
+            end;
+        application ->
+            Op = erl_syntax:application_operator(E),
+            Args = erl_syntax:application_arguments(E),
+            ArgC = lists:sum(linlist(N, Args)),
+            case erl_syntax:type(Op) of
+                fun_expr ->
+                    %% This is a let, so the check for linearity in
+                    %% the Rhs and the body (or bodies, if it's not
+                    %% really a let).
+                    Cs = erl_syntax:fun_expr_clauses(Op),
+                    ArgC + lists:max(linlist(N, Cs));
+                _ ->
+                    ArgC + lin(N, Op)
+            end;
+        if_expr ->
+            Cs = erl_syntax:if_expr_clauses(E),
+            lists:max(linlist(N, Cs));
+        case_expr ->
+            Arg = erl_syntax:case_expr_argument(E),
+            Cs = erl_syntax:case_expr_clauses(E),
+            lin(N, Arg) + lists:max(linlist(N, Cs));
+        clause ->
+            %% XXX: Ignores the pattern and guard. If N appears in
+            %% those then there's a different check that needs to
+            %% happen anyway.
+            lists:sum(linlist(N, erl_syntax:clause_body(E)));
+        match_expr ->
+            %% XXX: ignores the pattern
+            lin(N, erl_syntax:match_expr_body(E));
+        fun_expr ->
+            %% If the variable is in one of the clauses then it's
+            %% difficult to say statically if it's linear.
+            Cs = erl_syntax:fun_expr_clauses(E),
+            2 * lists:max(linlist(N, Cs));
+        T when T==list; T==tuple; T==infix_expr;
+               T==prefix_expr; T==block_expr ->
+            lists:sum(linlist(N, lists:flatten(erl_syntax:subtrees(E))));
+        T when ?IS_CONST_TYPE(T); T==implicit_fun;
+               T==operator ->
+            0
+    end.
+
+linlist(N, Es) ->
+    [lin(N, E) || E <- Es].
 
 %% Is the variable N strict in E? In other words, is it guaranteed
-%% that N will be evaluated in E? E must have been alpha converted.
-%% XXX: what about patterns?
-is_strict('_', _) -> false;
-is_strict(N, {var,_,N}) -> true;
+%% that N will be evaluated in E? It's alright if E doesn't terminate
+%% before coming to N. E must have been alpha converted.
+is_strict('_', _) ->
+    false;
 is_strict(N, E) ->
-    %% TODO
-    ?DEBUG("is_strict ~p ~p~n",[N,E]),
-    true.
+    F = fun (E1) -> is_strict(N, E1) end,
+    case erl_syntax:type(E) of
+        variable ->
+            erl_syntax:variable_name(E) == N;
+        application ->
+            Op = erl_syntax:application_operator(E),
+            Args = erl_syntax:application_arguments(E),
+            case erl_syntax:type(Op) of
+                fun_expr ->
+                    %% If a function is in the operator position then
+                    %% this is similar to let, except the fun expr
+                    %% might have multiple clauses.
+                    lists:all(F, erl_syntax:fun_expr_clauses(Op))
+                        orelse lists:any(F, Args);
+                _ ->
+                    lists:any(F, [Op|Args])
+            end;
+        if_expr ->
+            lists:all(F, erl_syntax:if_expr_clauses(E));
+        case_expr ->
+            Arg = erl_syntax:case_expr_argument(E),
+            Cs = erl_syntax:case_expr_clauses(E),
+            is_strict(N, Arg) orelse lists:all(F, Cs);
+        clause ->
+            %% XXX: ignores the guard and the pattern
+            lists:any(F, erl_syntax:clause_body(E));
+        match_expr ->
+            %% XXX: ignores the pattern
+            is_strict(N, erl_syntax:match_expr_body(E));
+        T when T==list; T==tuple; T==infix_expr;
+               T==prefix_expr; T==block_expr ->
+            lists:any(F, lists:flatten(erl_syntax:subtrees(E)));
+        T when ?IS_CONST_TYPE(T); T==implicit_fun; T==fun_expr;
+               T==operator ->
+            false
+    end.
 
 %% Constant folding.
 apply_op(L, '+', {integer,_,I1}, {integer,_,I2}) ->
@@ -685,6 +765,7 @@ apply_op(L, '>', {integer,_,I1}, {integer,_,I2}) ->
 %% TODO: more operators
 apply_op(_,_,_,_) ->
     false.
+
 apply_op(L, '-', {integer,_,I}) ->
     {ok,{integer,L,-I}};
 apply_op(_,_,_) ->
