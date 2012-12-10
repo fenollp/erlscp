@@ -10,8 +10,9 @@
 function(X0) ->
     X1 = flatten_bodies(X0),
     X2 = lift_cases(X1),
-    X3 = nicer_names(X2),
-    erl_syntax:revert(X3).
+    X3 = recover_ifs(X2),
+    X4 = nicer_names(X3),
+    erl_syntax:revert(X4).
 
 %% Remove block expressions from clause bodies.
 flatten_bodies(E0) ->
@@ -232,7 +233,52 @@ rename(S, E) ->
               end
       end, E).
 
+%% Case expressions that are just poorly written if expressions.
+recover_ifs(E0) ->
+    E = erl_syntax_lib:map(
+          fun (Node) ->
+                  case erl_syntax:type(Node) of
+                      case_expr ->
+                          Arg = erl_syntax:case_expr_argument(Node),
+                          Cs0 = erl_syntax:case_expr_clauses(Node),
+                          case try_recover_if(Arg, Cs0) of
+                              {ok,Cs} ->
+                                  IfE = erl_syntax:if_expr(Cs),
+                                  erl_syntax:copy_attrs(Node, IfE);
+                              _ ->
+                                  Node
+                          end;
+                      _ ->
+                          Node
+                  end
+          end, E0),
+    erl_syntax:revert(E).
+
+try_recover_if(Arg, Cs0) ->
+    erl_syntax:type(Arg) == nil
+        andalso
+        lists:all(fun (C) ->
+                          [P] = erl_syntax:clause_patterns(C),
+                          erl_syntax:type(P) == nil orelse
+                              erl_syntax:type(P) == underscore
+                  end, Cs0)
+        andalso
+        {ok,lists:map(fun (C0) ->
+                              %% If expr clauses must have at least one
+                              %% guard.
+                              G = case erl_syntax:clause_guard(C0) of
+                                      none -> [[{atom,0,true}]];
+                                      X -> X
+                                  end,
+                              B = erl_syntax:clause_body(C0),
+                              C1 = erl_syntax:clause([], G, B),
+                              C = erl_syntax:copy_attrs(C0, C1)
+                      end, Cs0)}.
+
+
 %% TODO: turn lets into matches
+
+%% TODO: lift out if exprs just like case exprs are lifted out
 
 %% TODO: after tidying single functions, go over all the remaining
 %% functions and see if e.g. ap@N/2 happens to be a renaming of ap/2.
