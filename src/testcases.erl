@@ -242,6 +242,13 @@ r18_test() ->
         Y -> X =:= Y
     end.
 
+r18_underscore_test() ->
+    X = 1,
+    case X of
+        [] -> [x|X];
+        _ -> X
+    end.
+
 %% apt({Xs,Ys}) ->
 %%     case {Xs,Ys} of
 %%         {[]} -> Ys;

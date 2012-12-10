@@ -214,7 +214,8 @@ build(Env0, Expr, [#call_ctxt{line=Line, args=Args0}|R]) -> %R17
 build(Env0, Expr={var,_,Name}, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R18
     %% Try to substitute the variable for the pattern in clauses.
     CRs = lists:map(fun (C0={clause,Lc,[P],G0,B0}) when
-                              ?IS_CONST_EXPR(P); element(1,P)=='var' ->
+                              ?IS_CONST_EXPR(P);
+                              element(1,P)=='var', element(3,P) =/= '_' ->
                             %% TODO: investigate if this rule should
                             %% be more powerful
                             S = dict:from_list([{Name,P}]),
