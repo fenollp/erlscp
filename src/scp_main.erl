@@ -113,13 +113,12 @@ drive(Env0, {'fun',_,{clauses,[{clause,_,[LhsV={var,_,Lhs}],[],Body0}]}},
             E = scp_expr:subst(dict:from_list([{Lhs,Rhs}]), Body1),
             drive(Env0, E, R);
         _ ->
-            %% TODO: is this tested?
             ?DEBUG("residual let.~n",[]),
             {Env1,NewRhs} = drive(Env0, Rhs, []),
             Env2 = extend_bound(Env1, sets:from_list([Lhs])),
             {Env3,Body} = drive(Env2, Body1, R),
             Env = Env3#env{bound = Env0#env.bound},
-            {Env,scp_expr:make_let(L, LhsV, NewRhs, Body)}
+            {Env,scp_expr:make_let(L, [LhsV], [NewRhs], [Body])}
     end;
 
 drive(Env0, E0={'fun',_,{clauses,Cs0}}, Ctxt=[#call_ctxt{line=Lc,args=As}|R]) -> %R5
