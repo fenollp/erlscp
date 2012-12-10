@@ -3,9 +3,10 @@
          rev/2, map/2, zip/2, flatten/1,
          double/1,
          sum/1, square/1, sumsqs/1, iota/2, sumsq/1,
-         to_utf8/1, string_to_utf8/1
+         zipmap/4, mapsq/1, f/1, g/1, mapsq2/1, sumf/1,
+         to_utf8/1, string_to_utf8/1,
+         same_length/2
         ]).
--include("scp.hrl").
 -compile({parse_transform, erlang_supercompiler}).
 
 ap([],Ys) -> Ys;
@@ -54,6 +55,19 @@ rev([X|Xs],Ys) -> rev(Xs, [X|Ys]).
 %% Tests upwards generalization.
 double(Xs) -> ap(Xs, Xs).
 
+%% Not improved.
+zipmap(F, G, Xs, Ys) ->
+    zip(map(F,Xs), map(G, Ys)).
+
+%% Fusing two successive applications.
+mapsq(Xs) -> map(fun square/1, Xs).
+f([]) -> [];
+f([X|Xs]) -> [2*X|g(Xs)].
+g([]) -> [];
+g([X|Xs]) -> [3*X|f(Xs)].
+mapsq2(Xs) -> mapsq(mapsq(Xs)).
+sumf(Xs) -> sum(f(Xs)).
+
 %% lc_test() ->
 %%     [X || X <- [1,2,a,3,4,b,5,6], integer(X), X > 3].
 
@@ -98,6 +112,9 @@ to_utf8(Code, Len, I, Set, Mask) when Len >= I ->
     A = if Len == I -> Code; true -> Code bsr (6 * (Len - I)) end,
     B = if Set == 0 -> A; true -> A bor Set end,
     [if Mask == 16#FF -> B; true -> B band Mask end];
+    %% A = case Len of I -> Code; _ -> Code bsr (6 * (Len - I)) end,
+    %% B = case Set of 0 -> A; _ -> A bor Set end,
+    %% [case Mask of 16#FF -> B; _ -> B band Mask end];
 to_utf8(_, _, _, _, _) ->
     [].
 
@@ -261,6 +278,18 @@ let_test() ->
     ?LET(X, fun (Y) -> Y end(1),
          {X,X}).
 
+foo(Ps,Xs,Ys,Zs) ->
+    case {Ys,Xs} of
+        {0,B} -> B;
+        {A,0} -> A
+    end.
+
+%% There is no improvement here, but scp_tidy should make sure
+%% that the residual program doesn't have case {Xs,Ys} of ...
+same_length([], []) -> true;
+same_length([_|Xs],[_|Ys]) -> same_length(Xs,Ys);
+same_length(_,_) -> false.
+
 %% apt({Xs,Ys}) ->
 %%     case {Xs,Ys} of
 %%         {[]} -> Ys;
@@ -273,11 +302,6 @@ let_test() ->
 %%         end,
 %%         to_utf8(Code)).
 
-%% TODO: there is no improvement here, but scp_tidy should make sure
-%% that the residual program doesn't have case {Xs,Ys} of ...
-%% same_length([], []) -> true;
-%% same_length([_|Xs],[_|Ys]) -> same_length(Xs,Ys);
-%% same_length(_,_) -> false.
 -endif.
 
 %% foo(Xs) ->
