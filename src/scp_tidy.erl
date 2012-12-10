@@ -82,7 +82,21 @@ try_lift([C]) ->
                                     {ok,lift_var(Ps, Name, Cs)};
                             tuple ->
                                 Vars = erl_syntax:tuple_elements(Arg),
-                                try_lift_tuple(Ps, Vars, Cs);
+                                only_nonrepeating_vars(Vars) andalso
+                                    lists:all(fun (C) ->
+                                                      [P] = erl_syntax:clause_patterns(C),
+                                                      erl_syntax:type(P) == tuple andalso
+                                                          length(Vars) ==
+                                                          length(erl_syntax:tuple_elements(P))
+                                              end, Cs)
+                                    andalso
+                                    begin
+                                        Names = [erl_syntax:variable_name(X) || X <- Vars],
+                                        lists:all(fun (N) -> lists:member(N, PNames) end,
+                                                  Names) andalso
+                                            not_used_elsewhere(Names, Cs) andalso
+                                            {ok,lift_tuple(Ps, Names, Cs)}
+                                    end;
                             _ ->
                                 false
                         end
@@ -122,10 +136,29 @@ lift_var(Ps0, Name, [C0|Cs]) ->
 lift_var(_, _, []) ->
     [].
 
-try_lift_tuple(Ps, Names, Cs) ->
-    %% TODO: The case argument is a tuple of variables
-    %%io:fwrite("lift_tuple: ~p~n ~p~n ~p~n",[Ps, Names, Cs]),
-    todo.
+lift_tuple(Ps0, Names, [C0|Cs]) ->
+    %% The case argument is a tuple of variables. It's possible that
+    %% PNames and Names are in different orders or lengths. The
+    %% patterns in Cs need to use the same order as PNames.
+    CasePs = erl_syntax:tuple_elements(hd(erl_syntax:clause_patterns(C0))),
+    Indices = lists:zip(Names, lists:seq(1, length(Names))),
+    Ps = lists:map(
+           fun (P) ->
+                   PName = erl_syntax:variable_name(P),
+                   case lists:keyfind(PName, 1, Indices) of
+                       {_, Idx} ->
+                           lists:nth(Idx, CasePs);
+                       _ ->
+                           P
+                   end
+           end, Ps0),
+    C1 = erl_syntax:clause(Ps,
+                           erl_syntax:clause_guard(C0),
+                           erl_syntax:clause_body(C0)),
+    C = erl_syntax:copy_attrs(C0, C1),
+    [C|lift_tuple(Ps0, Names, Cs)];
+lift_tuple(_, _, []) ->
+    [].
 
 only_nonrepeating_vars(Es) ->
     %% Check that all the expressions are nonrepeating variables.
@@ -198,6 +231,8 @@ rename(S, E) ->
                       Node
               end
       end, E).
+
+%% TODO: turn lets into matches
 
 %% TODO: after tidying single functions, go over all the remaining
 %% functions and see if e.g. ap@N/2 happens to be a renaming of ap/2.
