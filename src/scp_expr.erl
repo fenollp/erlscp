@@ -545,7 +545,7 @@ find_var_subst(B0, [{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T])
                     %% rest of the work. This is imprecise, but alpha
                     %% conversion should make it work.
                     Vars = lists:flatmap(fun scp_pattern:pattern_variables/1,
-                                         Ps1 ++ Ps1),
+                                         Ps1 ++ Ps2),
                     %%?DEBUG("Vars=~p~n",[Vars]),
                     B = sets:union(sets:from_list(Vars), B0),
                     Bodies = lists:flatmap(fun ({Body1,Body2}) ->
@@ -566,29 +566,34 @@ find_var_subst(B0, [{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T])
        true ->
             false
     end;
-%% find_var_subst(B0, [{{'fun',_,{clauses,Cs1}},{'fun',L,{clauses,Cs2}}}|T])
-%%   when length(Cs1) == length(Cs2) ->
-%%     %% Make the patterns in Cs2 use the same variable names as in Cs1,
-%%     %% then see if the guards and bodies are equal up to renaming.
-%%     {Ps10,Gs1,Bs1} = unzip_clauses(Cs1),
-%%     {Ps20,Gs2,Bs2} = unzip_clauses(Cs2),
-%%     [Ps1,Ps2] = lists:map(fun lists:flatten/1, [Ps10,Ps20]),
-%%     Es1 = lists:flatten(Gs1 ++ Bs1),
-%%     Es2 = lists:flatten(Gs2 ++ Bs2),
-%%     if length(Ps1) == length(Ps2) andalso
-%%        length(Es1) == length(Es2) ->
-%%             case find_var_subst(B0, lists:zip(Ps1,Ps2)) of
-%%                 {ok,Ss} ->
-%%                     Sd = dict:from_list(Ss),
-%%                     ?DEBUG("S: ~p~n",[dict:to_list(Sd)]),
-%%                     Paired = lists:zipwith(fun (E1,E2) -> {E1, subst(Sd,E2)} end,
-%%                                            Es1, Es2),
-%%                     ?DEBUG("Paired: ~p~n",[Paired]),
-%%                     find_var_subst(B0, Paired ++ T);
-%%                 _ -> false
-%%             end;
-%%        true -> false
-%%     end;
+find_var_subst(B0, [{{'fun',_,{clauses,Cs1}},{'fun',_,{clauses,Cs2}}}|T])
+  when length(Cs1) == length(Cs2) ->
+    {Ps10,Gs10,Bs1} = unzip_clauses(Cs1),
+    {Ps20,Gs20,Bs2} = unzip_clauses(Cs2),
+    [Ps1,Ps2,Gs1,Gs2] = lists:map(fun lists:flatten/1, [Ps10,Ps20,Gs10,Gs20]),
+    if length(Ps1) == length(Ps2) andalso
+       length(Gs1) == length(Gs2) andalso
+       length(Bs1) == length(Bs2) ->
+            %% Same as 'case', except there's no E1, E2. This also
+            %% depends quite a bit on alpha conversion.
+            case find_var_subst(B0, lists:zip(Ps1,Ps2)) of
+                {ok,Ss} ->
+                    Vars = lists:flatmap(fun scp_pattern:pattern_variables/1,
+                                         Ps1 ++ Ps2),
+                    B = sets:union(sets:from_list(Vars), B0),
+                    Bodies = lists:flatmap(fun ({Body1,Body2}) ->
+                                               lists:zip(Body1,Body2)
+                                           end,
+                                           lists:zip(Bs1, Bs2)),
+                    Sd = dict:from_list(Ss),
+                    NewT = [{subst(Sd, X),subst(Sd, Y)} ||
+                               {X,Y} <- lists:zip(Gs1, Gs2) ++ Bodies ++ T],
+                    find_var_subst(B, NewT, Ss);
+                false -> false
+            end;
+       true ->
+            false
+    end;
 %% TODO: more stuff
 find_var_subst(B, [{E1,E2}|T]) ->
     %% If two expressions have different types then there can't be a
@@ -604,8 +609,7 @@ find_var_subst(B, [{E1,E2}|T]) ->
                                 [integer,float,atom,string,char,nil,
                                  variable,underscore,application,case_expr,
                                  list,infix_expr,prefix_expr,tuple,
-                                 implicit_fun,if_expr
-                                %% ,fun_expr
+                                 implicit_fun,if_expr,fun_expr
                                 ]),
             false;
         _ ->
@@ -1064,8 +1068,8 @@ renaming14_test() ->
 
 renaming15_test() ->
     false = is_renaming(sets:new(),
-                        read("fun (X0,Y0) -> [X0|Y0] end"),
-                        read("fun (Y1,X1) -> [X1|Y1] end")).
+                        read("fun (X,Y) -> [X|Y] end"),
+                        read("fun (B,A) -> [A|B] end")).
 
 linear0_test() ->
     true = is_linear('X', read("1+X")).
