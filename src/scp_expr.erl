@@ -512,6 +512,8 @@ find_var_subst(B, [{{op,_,Op,L1,R1},{op,_,Op,L2,R2}}|T]) ->
     find_var_subst(B, [{L1,L2}, {R1,R2} | T]);
 find_var_subst(B, [{{op,_,Op,A1},{op,_,Op,A2}}|T]) ->
     find_var_subst(B, [{A1,A2} | T]);
+find_var_subst(B, [{{remote,_,M1,F1},{remote,_,M2,F2}}|T]) ->
+    find_var_subst(B, [{M1,M2},{F1,F2}|T]);
 find_var_subst(B, [{{block,_,Es1},{block,_,Es2}}|T])
   when length(Es1) == length(Es2) ->
     find_var_subst(B, lists:zip(Es1,Es2) ++ T);
