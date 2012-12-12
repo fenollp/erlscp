@@ -2,10 +2,12 @@
 -export([ap/2, ap/3,
          rev/2, map/2, zip/2, flatten/1,
          double/1,
-         sum/1, square/1, sumsqs/1, iota/2, sumsq/1,
+         sum/1, square/1, sumsqs/1, seq/2, sumsq/1,
          zipmap/4, mapsq/1, f/1, g/1, mapsq2/1, sumf/1,
          zipwith/3, vecdot/2,
-         to_utf8/1, string_to_utf8/1,
+         ap_opl/3, ap_opr/3,
+         sort/1,
+         %%to_utf8/1, string_to_utf8/1,
          same_length/2
         ]).
 -include("scp.hrl").                            %merely enables EUnit
@@ -42,13 +44,13 @@ sum([X|Xs]) -> X + sum(Xs).
 sumsqs(Xs) ->
     sum(map(fun square/1, Xs)).
 
-iota(I, N) when I > N ->
+seq(I, N) when I > N ->
     [];
-iota(I, N) ->
-    [I|iota(I+1, N)].
+seq(I, N) ->
+    [I|seq(I+1, N)].
 
 sumsq(N) ->
-    sumsqs(iota(1, N)).
+    sumsqs(seq(1, N)).
 
 %% Requires the whistle.
 rev([],Ys) -> Ys;
@@ -81,34 +83,34 @@ zipwith(_Fun, _, _) -> [].
 mult(X, Y) ->
     X * Y.
 vecdot(Xs, Ys) ->
-    %% TODO: sum(zipwith(fun (X, Y) -> X * Y end, Xs, Ys))
-    sum(zipwith(fun mult/2, Xs, Ys)).
+    sum(zipwith(fun (X, Y) -> X * Y end, Xs, Ys)).
 
-%% lc_test() ->
-%%     [X || X <- [1,2,a,3,4,b,5,6], integer(X), X > 3].
+%% The ++ operator.
+ap_opl(Xs, Ys, Zs) -> Xs ++ (Ys ++ Zs).
+ap_opr(Xs, Ys, Zs) -> (Xs ++ Ys) ++ Zs.
 
-%% fun_test() ->
-%%     Y = fun (X) -> X + 1 end,
-%%     Y.
+%% Examples from the Erlang Programming Examples User's Guide.
+sort([Pivot|T]) ->
+    sort([ X || X <- T, X < Pivot]) ++
+        [Pivot] ++
+        sort([ X || X <- T, X >= Pivot]);
+sort([]) -> [].
 
-%% yo(Y=H=5) ->
-%%     5.
+%%-compile({no_whistle,[xappend/1, xmap/2, xfilter/2]}).
+xappend(L) ->  [X || L1 <- L, X <- L1].
+xmap(Fun, L) -> [Fun(X) || X <- L].
+xfilter(Pred, L) -> [X || X <- L, Pred(X)].
 
-%% tuple({1,X}) -> 5;
-%% tuple(_) -> 1.
+select(X, L) ->  [Y || {X1, Y} <- L, X == X1].
 
-%% build(Env, Expr, [#call_ctxt{line=Line, args=Args}|R]) ->
-%%     error({todo}).
-
-%% foo(Y, X=#env.bound) ->
-%%     ok.
-
-%% foobar(<<X,4:4,Y:4/little-signed-integer-unit:8,Rest/binary>>) ->
-%%     ok.
+%% The residual program shouldn't rebuild the list.
+append_lc(Xs, Ys) ->
+    [X+1 || X <- Xs, is_integer(X)] ++ Ys.
 
 -ifndef(LET).
 -define(LET(L,R,B), ((fun(L) -> (B) end) (R))).
 -endif.
+
 
 -define(FOOBAR,1).
 
@@ -311,12 +313,6 @@ same_length(_,_) -> false.
 %%         {[]} -> Ys;
 %%         {[X|Xs]} -> [X|apt({Xs,Ys})]
 %%     end.
-
-%% broken(Code) ->
-%%     map(fun (X) ->
-%%                 X * 100
-%%         end,
-%%         to_utf8(Code)).
 
 -endif.
 

@@ -284,3 +284,7 @@ try_recover_if(Arg, Cs0) ->
 %% functions and see if e.g. ap@N/2 happens to be a renaming of ap/2.
 %% See if ap/3 merely calls ap@N/3 with the same arguments it was
 %% given.
+
+%% TODO: remove unused and unexported functions that have a gensymed name
+
+%% TODO: case expressions that are just matches in disguise

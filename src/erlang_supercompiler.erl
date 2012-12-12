@@ -2,16 +2,25 @@
 -export([parse_transform/2]).
 -include("scp.hrl").
 
-parse_transform(Forms, Options) ->
-    ?DEBUG("Before: ~p~n", [Forms]),
+stdfuns() ->
+    [%% Used for list comprehensions.
+     "flat1map(_,[]) -> [];
+      flat1map(F,[X|Xs]) -> F(X) ++ flat1map(F, Xs).",
+     %% Used for L ++ R.
+     "append([],Ys) -> Ys;
+      append([X|Xs],Ys) -> [X|append(Xs,Ys)]."
+     ].
+
+parse_transform(Forms0, _Options) ->
+    ?DEBUG("Before: ~p~n", [Forms0]),
+    {Libnames,Stdforms} = get_stdfuns(#env{seen_vars = function_names(Forms0)}),
+    Forms = scp_desugar:forms(Forms0 ++ Stdforms, Libnames),
     Global = extract_functions(Forms),
-    Fnames = lists:map(fun ({Name,_Arity}) -> Name end,
-                       dict:fetch_keys(Global)),
     NoWhistling = attrs(no_whistle, Forms),
-    Env0 = #env{global = Global,
-                seen_vars = sets:from_list(Fnames),
+    Env1 = #env{global = Global,
+                seen_vars = function_names(Forms),
                 no_whistling = sets:from_list(NoWhistling)},
-    Ret = forms(Forms, Env0),
+    Ret = forms(Forms, Env1),
     ?DEBUG("After: ~p~n", [Ret]),
     Ret.
 
@@ -19,8 +28,9 @@ forms(Forms0, Env) ->
     {Forms, _Env0} = lists:mapfoldl(fun form/2, Env, Forms0),
     lists:flatten(Forms).
 
-form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
-    %% TODO: what parts of the environment should be reset?
+form(F={function,_,Name,Arity,_Clauses0}, Env0) ->
+    %% TODO: first check if the function is exported (or if all
+    %% functions are exported)?
     ?DEBUG("~n~nLooking at function: ~w/~w~n", [Name, Arity]),
     Expr0 = scp_expr:function_to_fun(F),
     Seen = sets:union(Env0#env.seen_vars,
@@ -35,8 +45,8 @@ form(F={function,Line,Name,Arity,_Clauses0}, Env0) ->
     {Env2,Expr1} = scp_expr:alpha_convert(Env1, Expr0),
     {Env,Expr2} = scp_main:drive(Env2, Expr1, []),
     {Expr,Letrecs} = scp_expr:extract_letrecs(Expr2),
-    Functions = [ scp_expr:fun_to_function(scp_tidy:function(Expr), Name, Arity) ||
-                    {Name, Arity, Expr} <- Letrecs ],
+    Functions = [ scp_expr:fun_to_function(scp_tidy:function(Ex), Na, Ar) ||
+                    {Na, Ar, Ex} <- Letrecs ],
     Function = scp_expr:fun_to_function(scp_tidy:function(Expr), Name, Arity),
     {[Function|Functions],Env};
 form(X, Env) ->
@@ -54,10 +64,59 @@ attrs(_, []) ->
 %% Go over the forms and extract the top-level functions.
 extract_functions(Forms) ->
     extract_functions(Forms, dict:new()).
-extract_functions([F={function,Line,Name,Arity,Clauses}|Fs], Global) ->
+extract_functions([F={function,_,Name,Arity,_}|Fs], Global) ->
     Fun = scp_expr:function_to_fun(F),
     extract_functions(Fs, dict:store({Name,Arity}, Fun, Global));
 extract_functions([_|Fs], Global) ->
     extract_functions(Fs, Global);
 extract_functions([], Global) ->
     Global.
+
+function_names(Fs) ->
+    sets:from_list(function_names1(Fs)).
+function_names1([{function,_,Name,_,_}|Fs]) ->
+    [Name|function_names1(Fs)];
+function_names1([_|Fs]) ->
+    function_names1(Fs);
+function_names1([]) ->
+    [].
+
+%% Defines a set of standard functions that are called by the
+%% supercompiled code. Returns a dict and a list of forms.
+get_stdfuns(Env0) ->
+    {Fs, _} =
+        lists:mapfoldl(fun (Str, Env1) ->
+                               %% Parse the string and make a unique
+                               %% name for the function.
+                               {function,L,N0,A,Cs} = parse(Str),
+                               {Env2,N1} = scp_expr:gensym(Env1, N0),
+                               F = {function,L,N1,A,Cs},
+                               {{{N0,N1},F},Env2}
+                       end, Env0, stdfuns()),
+    {Libnames0,Stdforms0} = lists:unzip(Fs),
+    Libnames = dict:from_list(Libnames0),
+    Stdforms = [atom_subst(Libnames, E) || E <- Stdforms0],
+    {Libnames, [{attribute,0,file,{"erlang_supercompiler.erl",0}}|Stdforms]}.
+
+parse(Str) ->
+    {ok, Tokens, _} = erl_scan:string(Str),
+    {ok, Function} = erl_parse:parse_form(Tokens),
+    Function.
+
+atom_subst(S, E0) ->
+    E = erl_syntax_lib:map(
+          fun (Node) ->
+                  case erl_syntax:type(Node) of
+                      atom ->
+                          case dict:find(erl_syntax:atom_value(Node), S) of
+                              {ok,New} ->
+                                  E = erl_syntax:atom(New),
+                                  erl_syntax:copy_attrs(Node, E);
+                              _ ->
+                                  Node
+                          end;
+                      _ ->
+                          Node
+                  end
+          end, E0),
+    erl_syntax:revert(E).

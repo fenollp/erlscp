@@ -169,9 +169,6 @@ drive(Env0, E, Ctxt=[#op_ctxt{line=L, op=Op, e1=hole, e2=E2}|R])
   when ?IS_CONST_EXPR(E) -> %R10
     drive(Env0, E2, [#op_ctxt{line=L, op=Op, e1=E}|R]);
 
-%% drive(Env0, {op,L,'++',E1,E2}, R) ->
-%%     %% TODO: turn this into a call to locally defined append
-%%     ;
 drive(Env0, {op,L,Op,E1,E2}, R) ->              %R11
     drive(Env0, E1, [#op_ctxt{line=L, op=Op, e2=E2}|R]);
 drive(Env0, {op,L,Op,E}, R) ->                  %R11
@@ -193,8 +190,6 @@ drive(Env0, {'case',L,E,Cs}, R) ->              %R13
 
 drive(Env0, {'if',L,Cs}, R) ->
     drive_if(Env0, L, Cs, R);
-
-%% TODO: 'compile' list comprehensions
 
 %% Fallthrough.
 drive(Env0, Expr, R) ->                         %R14
