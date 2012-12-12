@@ -694,7 +694,8 @@ lin(N, E) ->
             Cs = erl_syntax:fun_expr_clauses(E),
             2 * lists:max(linlist(N, Cs));
         T when T==list; T==tuple; T==infix_expr;
-               T==prefix_expr; T==block_expr ->
+               T==prefix_expr; T==block_expr;
+               T==module_qualifier ->
             lists:sum(linlist(N, lists:flatten(erl_syntax:subtrees(E))));
         T when ?IS_CONST_TYPE(T); T==implicit_fun;
                T==operator ->
@@ -740,7 +741,8 @@ is_strict(N, E) ->
             %% XXX: ignores the pattern
             is_strict(N, erl_syntax:match_expr_body(E));
         T when T==list; T==tuple; T==infix_expr;
-               T==prefix_expr; T==block_expr ->
+               T==prefix_expr; T==block_expr;
+               T==module_qualifier ->
             lists:any(F, lists:flatten(erl_syntax:subtrees(E)));
         T when ?IS_CONST_TYPE(T); T==implicit_fun; T==fun_expr;
                T==operator ->
