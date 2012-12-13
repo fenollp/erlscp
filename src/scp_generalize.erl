@@ -53,6 +53,8 @@ peel0(E1, E2, InFun) ->
                 integer when InFun =/= false ->
                    erl_syntax:integer_value(E1) ==
                         erl_syntax:integer_value(E2);
+                T when ?IS_CONST_TYPE(T) ->
+                    true;
                 clause ->
                     B1 = erl_syntax:clause_body(E1),
                     B2 = erl_syntax:clause_body(E2),
