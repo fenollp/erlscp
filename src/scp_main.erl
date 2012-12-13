@@ -115,10 +115,22 @@ drive(Env0, {'fun',_,{clauses,[{clause,_,[LhsV={var,_,Lhs}],[],Body0}]}},
         _ ->
             ?DEBUG("residual let.~n",[]),
             {Env1,NewRhs} = drive(Env0, Rhs, []),
-            Env2 = extend_bound(Env1, sets:from_list([Lhs])),
-            {Env3,Body} = drive(Env2, Body1, R),
-            Env = Env3#env{bound = Env0#env.bound},
-            {Env,scp_expr:make_let(L, [LhsV], [NewRhs], [Body])}
+            case Env0#env.seen_vars==Env1#env.seen_vars
+                andalso scp_expr:terminates(Env1, NewRhs) of
+                true ->
+                    %% When the Rhs was driven the seen_vars set did
+                    %% not change, so clearly no new functions were
+                    %% created. See the end of 4.8.1.3 in Jonsson's
+                    %% Ph.D. thesis.
+                    E = scp_expr:subst(dict:from_list([{Lhs,NewRhs}]), Body1),
+                    drive(Env1, E, R);
+                _ ->
+                    ?DEBUG("residual let.~n",[]),
+                    Env2 = extend_bound(Env1, sets:from_list([Lhs])),
+                    {Env3,Body} = drive(Env2, Body1, R),
+                    Env = Env3#env{bound = Env0#env.bound},
+                    {Env,scp_expr:make_let(L, [LhsV], [NewRhs], [Body])}
+            end
     end;
 
 drive(Env0, E0={'fun',_,{clauses,Cs0}}, Ctxt=[#call_ctxt{line=Lc,args=As}|R]) -> %R5
