@@ -206,7 +206,19 @@ build(Env0, Expr, [#op_ctxt{line=Line, op=Op, e1=E1, e2=hole}|R]) ->        %R16
 build(Env0, Expr, [#call_ctxt{line=Line, args=Args0}|R]) -> %R17
     {Env,Args} = drive_list(Env0, fun drive/3, Args0),
     build(Env, scp_expr:make_call(Line,Expr,Args), R);
-build(Env0, Expr={var,_,Name}, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R18
+
+build(Env0, Expr, Ctxt=[#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R18/R19
+    %% build_case(Env0, Expr, Ctxt);
+    build_case_simp(Env0, Expr, Ctxt);
+build(Env0, Expr, [#op1_ctxt{line=Line, op=Op}|R]) ->
+    build(Env0, {op,Line,Op,Expr}, R);
+build(Env0, Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
+    build(Env0, {match,Line,P,Expr}, R);
+
+build(Env, Expr, []) ->                         %R20
+    {Env, Expr}.
+
+build_case(Env0, Expr={var,_,Name}, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R18
     %% Try to substitute the variable for the pattern in clauses.
     CRs = lists:map(fun (C0={clause,Lc,[P],G0,B0}) when
                               ?IS_CONST_EXPR(P);
@@ -221,20 +233,12 @@ build(Env0, Expr={var,_,Name}, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R18
                             {C,R}
                     end, Cs0),
     {Cs,Rs} = lists:unzip(CRs),
-    build_case(Env0, Line, Expr, Cs, Rs);
-build(Env0, Expr, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R19
-    build_case(Env0, Line, Expr, Cs0, lists:duplicate(length(Cs0), R));
-build(Env0, Expr, [#op1_ctxt{line=Line, op=Op}|R]) ->
-    build(Env0, {op,Line,Op,Expr}, R);
-build(Env0, Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
-    build(Env0, {match,Line,P,Expr}, R);
+    build_case_final(Env0, Line, Expr, Cs, Rs);
+build_case(Env0, Expr, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R19
+    build_case_final(Env0, Line, Expr, Cs0, lists:duplicate(length(Cs0), R)).
 
-build(Env, Expr, []) ->                         %R20
-    {Env, Expr}.
-
-build_case(Env0, Line, Expr, Cs0, Rs) ->
-    %% Drive every clause body in the R context.
-    %% TODO: this should be doing simplifications
+build_case_final(Env0, Line, Expr, Cs0, Rs) ->
+    %% Drive every clause body in the corresponding R context.
     {Cs1,Env1} = lists:mapfoldr(
                    fun ({{clause,Lc,H0,G0,B0},R},Env00) ->
                            Vars = head_variables(H0),
@@ -403,104 +407,94 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
             end
     end.
 
-%% Driving of built-in functions. This is where things like length/1
-%% can be inlined.
-drive_BIF(Env, E, R) ->
-    build(Env, E, R).
+%% Simplifications on case expressions.
+build_case_simp(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0, line=Line}|R]) ->
+    case scp_pattern:simplify(Env0#env.bound, E0, Cs0) of
+        {_,_,[]} ->
+            %% All the clauses disappeared. Preserve the error in the
+            %% residual program.
+            build_case(Env0, E0, Ctxt);
+        {E0,nothing,SCs} ->
+            Cs = [C || {C,nothing} <- SCs],
+            case Cs of
+                Cs0 ->
+                    %% The expression didn't change and neither did
+                    %% the clauses.
+                    build_case(Env0, E0, Ctxt);
+                _ ->
+                    %% The expression didn't change, but some clauses
+                    %% may have been removed.
+                    build(Env0, E0, [CR#case_ctxt{clauses=Cs}|R])
+            end;
+        {E,nothing,SCs} ->
+            %% A new expression, so driving might improve it further.
+            Cs = [C || {C,nothing} <- SCs],
+            drive(Env0, E, [CR#case_ctxt{clauses=Cs}|R]);
+        {E,Rhs0,SCs} ->
+            %% An expression was removed from the constructor.
+            ?DEBUG("Stuff happens: E=~p~n Rhs0=~p~n SCs=~p~n", [E,Rhs0,SCs]),
+            Cs1 = rebuild_clauses(Env0, Rhs0, SCs),
+            case lists:member(false, Cs1) of
+                true ->
+                    build_case(Env0, E0, Ctxt);
+                %% true ->
+                %%     %% It wasn't possible to simply substitute the Lhs
+                %%     %% in every clause. Bind Rhs0 to a new variable
+                %%     %% and do the substitution with that instead. More
+                %%     %% problematic than the equivalent let rule
+                %%     %% because case can "leak" variables.
+                %%     ?DEBUG("build_case_simp makes a block~n",[]),
+                %%     {Env1,Rhs} = build(Env0, Rhs0, []),
+                %%     {Env2,Var} = scp_expr:gensym(Env1, "P"),
+                %%     Cs2 = rebuild_clauses(Env2, {var,Line,Var}, SCs),
+                %%     Match = {match,Line,{var,Line,Var},Rhs},
+                %%     Env3 = extend_bound(Env2, sets:from_list([Var])),
+                %%     {Env4,Case} = build(Env3, E, [CR#case_ctxt{clauses=Cs2}|R]),
+                %%     Block = scp_expr:make_block(Line, Match, Case),
+                %%     ?DEBUG("block=~p~n", [Block]),
+                %%     {Env4,Block};
+                false ->
+                    NewCtxt = [CR#case_ctxt{clauses=Cs1}|R],
+                    case lists:all(fun ({_,nothing}) -> true;
+                                       ({_,_}) -> false
+                                   end, SCs) of
+                        true ->
+                            %% Lhs=nothing for all SCs, must
+                            %% residualize Rhs for effect.
+                            ?DEBUG("Residualized Rhs0=~p Cs1=~p~n", [Rhs0, Cs1]),
+                            build(Env0, scp_expr:make_block(Line, Rhs0, E), NewCtxt);
+                        false ->
+                            %% Lhs in each clause was substituted for Rhs.
+                            ?DEBUG("Stuff was easy. Cs1=~p~n",[Cs1]),
+                            build(Env0, E, NewCtxt)
+                    end
+            end;
+        Foo ->
+            %% Something more clever happened.
+            ?DEBUG("constructor case default: E=~p~n Ctxt=~p~n Foo=~p~n", [E0,Ctxt,Foo]),
+            build_case(Env0, E0, Ctxt)
+    end.
 
-
-%% %% FIXME: this should not do any more than implement the drive let rule.
-%% %% Any other improvments should be in a build rule.
-%% drive_constructor_case(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0, line=Line}|R]) ->
-%%     %%{Env0,E0} = drive(EnvX, EX, []),
-%%     case scp_pattern:simplify(Env0#env.bound, E0, Cs0) of
-%%         {_,_,[]} ->
-%%             %% All the clauses disappeared. Preserve the error in the
-%%             %% residual program.
-%%             build(Env0, E0, Ctxt);
-%%         {E0,nothing,SCs} ->
-%%             Cs = [C || {C,nothing} <- SCs],
-%%             case Cs of
-%%                 Cs0 ->
-%%                     %% The expression didn't change and neither did
-%%                     %% the clauses.
-%%                     {Env1,E1} = drive(Env0, E0, []),
-%%                     build(Env1, E1, [CR#case_ctxt{clauses=Cs}|R]);
-%%                 _ ->
-%%                     %% The expression didn't change, but some clause
-%%                     %% may have been removed.
-%%                     drive(Env0, E0, [CR#case_ctxt{clauses=Cs}|R])
-%%             end;
-%%         {E,nothing,SCs} ->
-%%             %% A new expression, so driving might improve it further.
-%%             Cs = [C || {C,nothing} <- SCs],
-%%             drive(Env0, E, [CR#case_ctxt{clauses=Cs}|R]);
-%%         {E,Rhs0,SCs} ->
-%%             %% An expression was removed from the constructor.
-%%             ?DEBUG("Stuff happens: E=~p~n Rhs0=~p~n SCs=~p~n", [E,Rhs0,SCs]),
-%%             Cs1 = rebuild_clauses(Env0, Rhs0, SCs),
-%%             case lists:member(false, Cs1) of
-%%                 %% true ->
-%%                 %%     %% It wasn't possible to simply substitute the Lhs
-%%                 %%     %% in every clause. Bind Rhs0 to a new variable
-%%                 %%     %% and do the substitution with that instead. This
-%%                 %%     %% is equivalent to the second case in R9.
-
-%%                 %%     %% TODO: check that this works. Also check if it
-%%                 %%     %% would work better to make the block and then do
-%%                 %%     %% driving on that instead.
-%%                 %%     ?DEBUG("Stuff happening~n"),
-%%                 %%     {Env1,Rhs} = drive(Env0, Rhs0, []),
-%%                 %%     {Env2,Var} = scp_expr:gensym(Env1, "P"),
-%%                 %%     Cs2 = rebuild_clauses(Env2, {var,Line,Var}, SCs),
-%%                 %%     Match = {match,Line,{var,Line,Var},Rhs},
-%%                 %%     Env = extend_bound(Env2, sets:from_list([Var])),
-%%                 %%     Case = drive(Env, E, [CR#case_ctxt{clauses=Cs2}|R]),
-%%                 %%     NewE = scp_expr:make_block(Match, Case),
-%%                 %%     ?DEBUG("Stuff happened: NewE=~p~n", [NewE]),
-%%                 %%     NewE;
-%%                 false ->
-%%                     NewCtxt = [CR#case_ctxt{clauses=Cs1}|R],
-%%                     case lists:all(fun ({_,nothing}) -> true;
-%%                                        ({_,_}) -> false
-%%                                    end, SCs) of
-%%                         true ->
-%%                             %% Lhs=nothing for all SCs, must
-%%                             %% residualize Rhs for effect.
-%%                             ?DEBUG("Residualized Rhs0=~p Cs1=~p~n", [Rhs0, Cs1]),
-%%                             drive(Env0, scp_expr:make_block(Line, Rhs0, E), NewCtxt);
-%%                         false ->
-%%                             %% Lhs in each clause was substituted for Rhs.
-%%                             ?DEBUG("Stuff was easy. Cs1=~p~n",[Cs1]),
-%%                             drive(Env0, E, NewCtxt)
-%%                     end
-%%             end;
-%%         Foo ->
-%%             %% Something more clever happened.
-%%             ?DEBUG("constructor case default: E=~p~n Ctxt=~p~n Foo=~p~n", [E0,Ctxt,Foo]),
-%%             build(Env0, E0, Ctxt)
-%%     end.
-
-%% rebuild_clauses(Env, Rhs, [{C0,nothing}|SCs]) ->
-%%     [C0|rebuild_clauses(Env, Rhs, SCs)];
-%% rebuild_clauses(Env, Rhs, [{C0,Lhs}|SCs]) ->
-%%     %% Replace Lhs with Rhs in the body, if it's semantically ok.
-%%     {clause,L,P,G,B0} = C0,
-%%     %% FIXME: if Lhs ever appears in a guard, then Rhs must be a legal
-%%     %% guard expression.
-%%     case scp_expr:terminates(Env, Rhs)
-%%         orelse (scp_expr:is_linear(Lhs, B0)
-%%                 andalso scp_expr:is_strict(Lhs, B0)) of
-%%         true ->
-%%             S = dict:from_list([{Lhs,Rhs}]),
-%%             B = [scp_expr:subst(S, X) || X <- B0],
-%%             C = {clause,L,P,G,B},
-%%             [C|rebuild_clauses(Env, Rhs, SCs)];
-%%         _ ->
-%%             false
-%%     end;
-%% rebuild_clauses(_, _, []) ->
-%%     [].
+rebuild_clauses(Env, Rhs, [{C0,nothing}|SCs]) ->
+    [C0|rebuild_clauses(Env, Rhs, SCs)];
+rebuild_clauses(Env, Rhs, [{C0,Lhs}|SCs]) ->
+    %% Replace Lhs with Rhs in the body, if it's semantically ok.
+    {clause,L,P,G,B0} = C0,
+    %% FIXME: if Lhs ever appears in a guard, then Rhs must be a legal
+    %% guard expression.
+    case scp_expr:terminates(Env, Rhs)
+        orelse (scp_expr:is_linear(Lhs, scp_expr:list_to_block(0, B0))
+                andalso scp_expr:is_strict(Lhs, scp_expr:list_to_block(0, B0))) of
+        true ->
+            S = dict:from_list([{Lhs,Rhs}]),
+            B = [scp_expr:subst(S, X) || X <- B0],
+            C = {clause,L,P,G,B},
+            [C|rebuild_clauses(Env, Rhs, SCs)];
+        _ ->
+            [false]
+    end;
+rebuild_clauses(_, _, []) ->
+    [].
 
 %% Plug an expression into a context.
 plug(Expr, [#call_ctxt{line=Line, args=Args}|R]) ->
