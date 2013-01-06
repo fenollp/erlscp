@@ -93,6 +93,8 @@ make_call(Line, {constructor,_,cons}, [H,T]) ->
     {cons,Line,H,T};
 make_call(Line, {constructor,_,tuple}, As) ->
     {tuple,Line,As};
+make_call(Line, {'fun',Lf,{function,F,A}}, As) when A == length(As) ->
+    make_call(Line, {atom,Lf,F}, As);
 make_call(Line, {'atom',_,element}, [{integer,_,I},{tuple,_,Es}])
   when I > 0, I =< length(Es) ->
     %% Need to residualize the rest of Es for effect.
