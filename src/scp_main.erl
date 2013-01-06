@@ -1,5 +1,5 @@
 %% -*- coding: utf-8; mode: erlang -*-
-%% @copyright 2012 Göran Weinholt
+%% @copyright 2012, 2013 Göran Weinholt
 %% @author Göran Weinholt <goran@weinholt.se>
 %% @doc The driving algorithm in the supercompiler.
 
@@ -33,11 +33,16 @@ extend_bound(Env,Vars) ->
 %% The driving algorithm. The environment is used to pass information
 %% downwards and upwards the stack. R is the current context.
 
+drive(Env0, E, Ctxt) ->
+    ?DEBUG("~nDRIVE:~n~p~n~p~n",[E,Ctxt]),
+    drive0(Env0, E, Ctxt).
+
 %% Evaluation rules.
-drive(Env0, E, Ctxt=[#case_ctxt{clauses=Cs0}|R]) when ?IS_CONST_EXPR(E) -> %R1
+drive0(Env0, E, Ctxt=[#case_ctxt{clauses=Cs0}|R]) when ?IS_CONST_EXPR(E) -> %R1
     %% E is a constant. One of the case clauses should match the
     %% constant exactly and have a true guard.
     %% TODO: strings may be better treated as conses
+    ?DEBUG("R1~n",[]),
     case scp_pattern:find_matching_const(E, Cs0) of
         [{yes,{clause,L,P,[],B}}] ->
             drive(Env0, scp_expr:list_to_block(L, B), R);
@@ -49,34 +54,41 @@ drive(Env0, E, Ctxt=[#case_ctxt{clauses=Cs0}|R]) when ?IS_CONST_EXPR(E) -> %R1
             build(Env0, E, Ctxt)
     end;
 
-drive(Env0, E2, Ctxt=[#op_ctxt{line=L, op=Op, e1=E1, e2=hole}|R])
+drive0(Env0, E2, Ctxt=[#op_ctxt{line=L, op=Op, e1=E1, e2=hole}|R])
   when ?IS_CONST_EXPR(E2) -> %R2
+    ?DEBUG("R2~n",[]),
     case scp_expr:apply_op(L, Op, E1, E2) of
         {ok,V} -> drive(Env0, V, R);
         _ -> build(Env0, E2, Ctxt)
     end;
-drive(Env0, E1, Ctxt=[#op1_ctxt{line=L, op=Op}|R])
+drive0(Env0, E1, Ctxt=[#op1_ctxt{line=L, op=Op}|R])
   when ?IS_CONST_EXPR(E1) -> %R2
+    ?DEBUG("R2~n",[]),
     case scp_expr:apply_op(L, Op, E1) of
         {ok,V} -> drive(Env0, V, R);
         _ -> build(Env0, E1, Ctxt)
     end;
 
-drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
-    %% This is a function call to a local function or a BIF.
-    Arity = length(Args),
+%% drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
+%%     %% This is a function call to a local function or a BIF.
+%%     Arity = length(Args),
+%%     case lookup_function(Env0, {G, Arity}) of
+%%         {ok,Fun} -> drive_call(Env0, E, L0, G, Arity, Fun, R);
+%%         _ -> build(Env0, E, R)
+%%     end;
+%% drive(Env0, E={'fun',Lf,{function,G,Arity}}, R=[#call_ctxt{args=Args}|_])
+%%   when length(Args) == Arity ->                 %R3 alternative syntax
+%%     drive(Env0, {'atom',Lf,G}, R);
+drive0(Env0, E={'fun',Lf,{function,G,Arity}}, R) -> %R3
+    ?DEBUG("R3~n",[]),
     case lookup_function(Env0, {G, Arity}) of
-        {ok,Fun} -> drive_call(Env0, E, L0, G, Arity, Fun, R);
-        _ -> drive_BIF(Env0, E, R)
+        {ok,Fun} -> drive_call(Env0, E, Lf, G, Arity, Fun, R);
+        _ -> build(Env0, E, R)
     end;
-drive(Env0, E={'fun',Lf,{function,G,Arity}}, R=[#call_ctxt{args=Args}|_])
-  when length(Args) == Arity ->                 %R3 alternative syntax
-    drive(Env0, {'atom',Lf,G}, R);
-%% TODO: R3 for 'fun' in any context
-%% TODO: R3 for {remote,_,{atom,_,lists},{atom,_,flatten}} and so on.
 
-drive(Env0, E0={constructor,L,Cons},
+drive0(Env0, E0={constructor,L,Cons},
       Ctxt=[#call_ctxt{args=Args},#case_ctxt{clauses=Cs0}|R]) -> %R4
+    ?DEBUG("R4~n",[]),
     E = scp_expr:make_call(L, E0, Args),
     ?DEBUG("Known constructor in a case.~n~p~n~p~n",[E,Ctxt]),
     case scp_pattern:find_constructor_clause(Env0#env.bound, E, Cs0) of
@@ -91,29 +103,34 @@ drive(Env0, E0={constructor,L,Cons},
             build(Env0, E0, Ctxt)
     end;
 
-drive(Env0, {'fun',_,{clauses,[{clause,_,[],[],Body}]}},
+drive0(Env0, {'fun',_,{clauses,[{clause,_,[],[],Body}]}},
       [#call_ctxt{line=L,args=[]}|R]) ->
     %% Let with no bindings.
+    ?DEBUG("R7 end~n",[]),
     drive(Env0, scp_expr:list_to_block(L, Body), R);
-drive(Env0, {'fun',_,{clauses,[{clause,_,[{var,_,'_'}],[],Body0}]}},
+drive0(Env0, {'fun',_,{clauses,[{clause,_,[{var,_,'_'}],[],Body0}]}},
       [#call_ctxt{line=L,args=[Rhs]}|R]) ->
     %% Let that ignores the result from Rhs.
+    ?DEBUG("R7 ignore~n",[]),
     drive(Env0, scp_expr:list_to_block(L, [Rhs|Body0]), R);
-drive(Env0, {'fun',_,{clauses,[{clause,_,[LhsV={var,_,Lhs}],[],Body0}]}},
-      [#call_ctxt{line=L,args=[Rhs]}|R]) ->     %R7/R8/R9
+%% drive0(Env0, {'fun',_,{clauses,[{clause,_,[LhsV={var,_,Lhs}],[],Body0}]}},
+%%       [#call_ctxt{line=L,args=[Rhs]}|R]) ->     %R7/R8/R9
+drive0(Env0, {call,L, {'fun',_,{clauses,[{clause,_,[LhsV={var,_,Lhs}],[],Body0}]}},
+              [Rhs]},R) ->     %R7/R8/R9
     %% Let.
+    ?DEBUG("R7/R8/R9~n",[]),
     Body1 = scp_expr:list_to_block(L, Body0),
-    ?DEBUG("let!!!~n Lhs=~p Rhs=~p Body=~p~n",[Lhs,Rhs,Body1]),
+    ?DEBUG("let!!!~n Lhs=~p Rhs=~p~n Body=~p~n",[Lhs,Rhs,Body1]),
     %% FIXME: Also ensure that Lhs is not used improperly in a pattern
     %% or guard.
     case scp_expr:terminates(Env0, Rhs)
         orelse (scp_expr:is_linear(Lhs, Body1)
                 andalso scp_expr:is_strict(Lhs, Body1)) of
         true ->
+            ?DEBUG("no residual let.~n",[]),
             E = scp_expr:subst(dict:from_list([{Lhs,Rhs}]), Body1),
             drive(Env0, E, R);
         _ ->
-            ?DEBUG("residual let.~n",[]),
             {Env1,NewRhs} = drive(Env0, Rhs, []),
             case Env0#env.seen_vars==Env1#env.seen_vars
                 andalso scp_expr:terminates(Env1, NewRhs) of
@@ -133,7 +150,8 @@ drive(Env0, {'fun',_,{clauses,[{clause,_,[LhsV={var,_,Lhs}],[],Body0}]}},
             end
     end;
 
-drive(Env0, E0={'fun',_,{clauses,Cs0}}, Ctxt=[#call_ctxt{line=Lc,args=As}|R]) -> %R5
+drive0(Env0, E0={'fun',_,{clauses,Cs0}}, Ctxt=[#call_ctxt{line=Lc, args=As}|R]) -> %R5
+    ?DEBUG("R5~n",[]),
     %% The original rule simply uses a let, but Erlang's function
     %% clauses have built-in pattern matching. The arguments that
     %% require pattern matching become a case expression and the rest
@@ -149,13 +167,15 @@ drive(Env0, E0={'fun',_,{clauses,Cs0}}, Ctxt=[#call_ctxt{line=Lc,args=As}|R]) ->
             %% Arity mismatch.
             build(Env0, E0, Ctxt)
     end;
-
-drive(Env0, {'fun',Line,{clauses,Cs0}}, R) ->   %R6
+drive0(Env0, {'fun',Line,{clauses,Cs0}}, R) ->   %R6
+    ?DEBUG("R6~n",[]),
     {Env,Cs} = drive_clauses(Env0, Cs0),
     build(Env, {'fun',Line,{clauses,Cs}}, R);
 
-drive(Env0, E={'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, R) ->
+drive0(Env0, E={'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, R) ->
+    ?DEBUG("R9rec~n",[]),
     %% Letrec.
+    io:fwrite("driving letrec: ~p~n",[E]),
     {Bs,Body} = scp_expr:letrec_destruct(E),
     Local = lists:foldl(fun ({Name,Arity,Rhs},L) ->
                                 dict:store({Name,Arity}, Rhs, L)
@@ -165,73 +185,93 @@ drive(Env0, E={'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, R) ->
     {Env, Expr} = drive(Env1, scp_expr:list_to_block(Line, Body), R),
     {Env#env{local=Env0#env.local},Expr};
 
-drive(Env0, E={'block',Lb,[{'match',Lm,P0,E0},Rest]}, R) ->
+drive0(Env0, E={'block',Lb,[{'match',Lm,P0,E0},Rest]}, R) ->
+    ?DEBUG("R match/block~n",[]),
     drive(Env0, scp_expr:make_case(Lb, E0, [{clause,Lm,[P0],[],[Rest]}]), R);
-drive(Env0, {'block',Line,[A0,B0]}, R) ->
+drive0(Env0, {'block',Line,[A0,B0]}, R) ->
     %% TODO: have the driving of case, match, etc save up a list of
     %% variables that will become bound in B.
+    ?DEBUG("R block~n",[]),
     {Env1, A} = drive(Env0, A0, []),
     {Env, B} = drive(Env1, B0, R),
     {Env, scp_expr:make_block(Line, A, B)};
-drive(Env0, {'block',Line,Es}, R) ->
+drive0(Env0, {'block',Line,Es}, R) ->
     drive(Env0, scp_expr:list_to_block(Line, Es), R);
 
 %% Focusing rules.
-drive(Env0, E, Ctxt=[#op_ctxt{line=L, op=Op, e1=hole, e2=E2}|R])
+drive0(Env0, E, Ctxt=[#op_ctxt{line=L, op=Op, e1=hole, e2=E2}|R])
   when ?IS_CONST_EXPR(E) -> %R10
+    ?DEBUG("R10~n",[]),
     drive(Env0, E2, [#op_ctxt{line=L, op=Op, e1=E}|R]);
 
-drive(Env0, {op,L,Op,E1,E2}, R) ->              %R11
+drive0(Env0, {op,L,Op,E1,E2}, R) ->              %R11
+    ?DEBUG("R11~n",[]),
     drive(Env0, E1, [#op_ctxt{line=L, op=Op, e2=E2}|R]);
-drive(Env0, {op,L,Op,E}, R) ->                  %R11
+drive0(Env0, {op,L,Op,E}, R) ->                  %R11
+    ?DEBUG("R11~n",[]),
     drive(Env0, E, [#op1_ctxt{line=L, op=Op}|R]);
 
-drive(Env0, {'call',L,F,Args}, R) ->            %R12
+drive0(Env0, {'call',L,X={atom,La,N},Args}, R) ->            %R12
+    ?DEBUG("R12: ~p~n~n",[X]),
+    drive(Env0, {'fun',La,{function,N,length(Args)}}, [#call_ctxt{line=L, args=Args}|R]);
+drive0(Env0, {'call',L,F,Args}, R) ->            %R12
+    ?DEBUG("R12: ~p~n~n",[F]),
     drive(Env0, F, [#call_ctxt{line=L, args=Args}|R]);
-drive(Env0, {cons,L,H,T}, R) ->                 %R12 for cons
+drive0(Env0, {cons,L,H,T}, R) ->                 %R12 for cons
+    ?DEBUG("R12cons~n",[]),
     drive(Env0, {constructor,L,cons}, [#call_ctxt{line=L, args=[H,T]}|R]);
-drive(Env0, {tuple,L,Es}, R) ->                 %R12 for tuple
+drive0(Env0, {tuple,L,Es}, R) ->                 %R12 for tuple
+    ?DEBUG("R12tuple~n",[]),
     drive(Env0, {constructor,L,tuple}, [#call_ctxt{line=L, args=Es}|R]);
 
-drive(Env0, {'match',L,P,E}, R) ->
+drive0(Env0, {'match',L,P,E}, R) ->
     %% XXX: pushes match into case clauses etc
+    ?DEBUG("R match~n",[]),
     drive(Env0, E, [#match_ctxt{line=L,pattern=P}|R]);
 
-drive(Env0, {'case',L,E,Cs}, R) ->              %R13
+drive0(Env0, {'case',L,E,Cs}, R) ->              %R13
+    ?DEBUG("R13~n",[]),
     drive(Env0, E, [#case_ctxt{line=L, clauses=Cs}|R]);
 
-drive(Env0, {'if',L,Cs}, R) ->
+drive0(Env0, {'if',L,Cs}, R) ->
+    ?DEBUG("R if~n",[]),
     drive_if(Env0, L, Cs, R);
 
 %% Fallthrough.
-drive(Env0, Expr, R) ->                         %R14
-    ?DEBUG("~n%% Fallthrough!~n", []),
-    ?DEBUG("%% Expr: ~p~n%% R: ~p~n", [Expr, R]),
+drive0(Env0, Expr, R) ->                         %R14
+    ?DEBUG("R14~n",[]),
     build(Env0, Expr, R).
 
 %% Rebuilding expressions.
 build(Env0, Expr, [#op_ctxt{line=Line, op=Op, e1=hole, e2=E2}|R]) ->        %R15
+    ?DEBUG("R15~n",[]),
     {Env1,E} = drive(Env0, E2, []),
     build(Env1, {op,Line,Op,Expr,E}, R);
 build(Env0, Expr, [#op_ctxt{line=Line, op=Op, e1=E1, e2=hole}|R]) ->        %R16
+    ?DEBUG("R16~n",[]),
     build(Env0, {op,Line,Op,E1,Expr}, R);
 build(Env0, Expr, [#call_ctxt{line=Line, args=Args0}|R]) -> %R17
+    ?DEBUG("R17~n",[]),
     {Env,Args} = drive_list(Env0, fun drive/3, Args0),
     build(Env, scp_expr:make_call(Line,Expr,Args), R);
 
 build(Env0, Expr, Ctxt=[#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R18/R19
-    %% build_case(Env0, Expr, Ctxt);
-    build_case_simp(Env0, Expr, Ctxt);
+    build_case(Env0, Expr, Ctxt);
+    %%build_case_simp(Env0, Expr, Ctxt);
 build(Env0, Expr, [#op1_ctxt{line=Line, op=Op}|R]) ->
+    ?DEBUG("R15/16 op1~n",[]),
     build(Env0, {op,Line,Op,Expr}, R);
 build(Env0, Expr, [#match_ctxt{line=Line, pattern=P}|R]) ->
+    ?DEBUG("R build match~n",[]),
     build(Env0, {match,Line,P,Expr}, R);
 
 build(Env, Expr, []) ->                         %R20
+    ?DEBUG("R20~n",[]),
     {Env, Expr}.
 
 build_case(Env0, Expr={var,_,Name}, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R18
     %% Try to substitute the variable for the pattern in clauses.
+    ?DEBUG("R18~n",[]),
     CRs = lists:map(fun (C0={clause,Lc,[P],G0,B0}) when
                               ?IS_CONST_EXPR(P);
                               element(1,P)=='var', element(3,P) =/= '_' ->
@@ -247,11 +287,12 @@ build_case(Env0, Expr={var,_,Name}, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %
     {Cs,Rs} = lists:unzip(CRs),
     build_case_final(Env0, Line, Expr, Cs, Rs);
 build_case(Env0, Expr, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R19
+    ?DEBUG("R19~n",[]),
     build_case_final(Env0, Line, Expr, Cs0, lists:duplicate(length(Cs0), R)).
 
 build_case_final(Env0, Line, Expr, Cs0, Rs) ->
     %% Drive every clause body in the corresponding R context.
-    {Cs1,Env1} = lists:mapfoldr(
+    {Cs1,Env1} = lists:mapfoldl(
                    fun ({{clause,Lc,H0,G0,B0},R},Env00) ->
                            Vars = head_variables(H0),
                            Env01 = extend_bound(Env00, Vars),
@@ -335,7 +376,12 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
         {ok,Fname} ->
             %% L is a renaming of an old expression.
             ?DEBUG("Folding. Fname=~p, FV=~p~n",[Fname,FV]),
-            Expr={'call',Line,{atom,Line,Fname},[{var,Line,X} || X <- FV]},
+            case FV of
+                [] ->
+                    Expr={'atom',Line,Fname};
+                _ ->
+                    Expr={'call',Line,{atom,Line,Fname},[{var,Line,X} || X <- FV]}
+            end,
             {Env0#env{found=[Fname|Env0#env.found]},Expr};
         _ ->
             %% Next try to find a homeomorphic embedding.
@@ -363,12 +409,13 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
                             {Env2,{var,Line,G}}
                     end;
                 _ ->
+                    ?DEBUG("making a new function for: ~p~n", [L]),
                     %% Neither a renaming nor an embedding.
                     {Env1,Fname} = scp_expr:gensym(Env0, Env0#env.name),
                     {Env2,Fun} = scp_expr:alpha_convert(Env1, Fun0),
                     %% Remember that Fname came from the expression L.
                     Env3 = Env2#env{ls = [{Fname,L}|Env2#env.ls]},
-                    ?DEBUG("Before: ~p~nAfter: ~p~n", [Fun0,Fun]),
+                    %%?DEBUG("Before: ~p~nAfter: ~p~n", [Fun0,Fun]),
                     %% Drive the fun in the original context. If the context is a
                     %% call_ctxt then this might do inlining.
                     {Env4,E} = drive(Env3, Fun, R),
@@ -387,32 +434,36 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
                                     %% Fname was never used in E, so there is no need
                                     %% to residualize a new function. This basically
                                     %% inlines what would otherwise be a new function.
-                                    %% Need to forget about Fname, because otherwise
-                                    %% it might be used afterwards.
-                                    Env6 = Env5#env{ls = lists:keydelete(Fname, 1, Env5#env.ls)},
-                                    {Env6,E};
+                                    {Env5#env{ls=Env2#env.ls},E};
                                 _ ->
                                     Head = [scp_expr:subst(S, {var,Line,X}) || X <- FV],
                                     %% ?DEBUG("S: ~p~n", [S]),
-                                    %% ?DEBUG("Free variables in ~p: ~w~n", [L,FV]),
+                                    ?DEBUG("Free variables in ~p: ~w~n", [L,FV]),
                                     %% ?DEBUG("Head: ~p~n",[Head]),
                                     Guard = [],
-                                    %% ?DEBUG("E: ~p~n",[E]),
+                                    ?DEBUG("E: ~p~n",[E]),
                                     Body = scp_expr:subst(S, E),
-                                    NewFun0 = {'fun',Line,
-                                               {clauses,
-                                                [{clause,Line,Head,Guard,[Body]}]}},
-                                    NewTerm = {'call',Line,{atom,Line,Fname},
-                                               [{var,Line,X} || X <- FV]},
+                                    case FV of
+                                        [] ->
+                                            NewFun0 = E,
+                                            NewTerm = {atom,Line,Fname};
+                                        _ ->
+                                            NewFun0 = {'fun',Line,
+                                                       {clauses,
+                                                        [{clause,Line,Head,Guard,[Body]}]}},
+                                            NewTerm = {'call',Line,{atom,Line,Fname},
+                                                       [{var,Line,X} || X <- FV]}
+                                    end,
                                     ?DEBUG("NewFun0: ~p~n",[NewFun0]),
                                     ?DEBUG("NewTerm: ~p~n",[NewTerm]),
                                     {Env6,NewFun} = scp_expr:alpha_convert(Env5, NewFun0),
-                                    ?DEBUG("NewFun: ~p~n",[NewFun]),
+                                    ?DEBUG("NewFun: ~p ~p~n",[Fname,NewFun]),
                                     %% This letrec will become a top-level function later.
+                                    Farity = erl_syntax:fun_expr_arity(NewFun),
                                     Letrec = scp_expr:make_letrec(Line,
-                                                                  [{Fname,length(FV),NewFun}],
+                                                                  [{Fname,Farity,NewFun}],
                                                                   [NewTerm]),
-                                    %%{Env6,Letrec}
+                                    ?DEBUG("Letrec: ~p~n",[Letrec]),
                                     {Env6#env{ls=Env2#env.ls},Letrec}
                             end
                     end
