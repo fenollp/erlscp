@@ -36,7 +36,8 @@ zip([X|Xs],Ys0) ->
 flatten([]) ->
     [];
 flatten([Xs|Xss]) ->
-    ap(Xs,flatten(Xss)).
+    Xs ++ flatten(Xss).
+%%    ap(Xs,flatten(Xss)).
 
 square(X) -> X * X.
 sum([]) -> 0;
@@ -80,8 +81,6 @@ zipwith(Fun, [X|Xs], Ys0) ->
             [Fun(X, Y)|zipwith(Fun, Xs,Ys)]
     end;
 zipwith(_Fun, _, _) -> [].
-mult(X, Y) ->
-    X * Y.
 vecdot(Xs, Ys) ->
     sum(zipwith(fun (X, Y) -> X * Y end, Xs, Ys)).
 
@@ -149,7 +148,6 @@ to_utf8(Code) when Code < 16#800 -> to_utf8(Code, 2);
 to_utf8(Code) when Code < 16#10000 -> to_utf8(Code, 3);
 to_utf8(Code) -> to_utf8(Code, 4).
 
--compile({no_whistle,[string_to_utf8/1]}).
 string_to_utf8(S) ->
     flatten(map(fun to_utf8/1, S)).
 
@@ -337,8 +335,8 @@ same_length(_,_) -> false.
 
 %% -compile({no_whistle,[foo/1]}).
 
-%% foo(Xs) ->
-%%     flatten(map(fun bar/1, Xs)).
+foo(Xs) ->
+    flatten(map(fun bar/1, Xs)).
 
-%% bar(X) ->
-%%     [X+1].
+bar(X) ->
+    [X+1].
