@@ -1,5 +1,5 @@
 %% -*- coding: utf-8; mode: erlang -*-
-%% @copyright 2012 Göran Weinholt
+%% @copyright 2012, 2013 Göran Weinholt
 %% @author Göran Weinholt <goran@weinholt.se>
 %% @doc Homeomorphic embedding and most specific generalization.
 
@@ -112,13 +112,32 @@ gensyms(Env0, Line, Prefix, Es) ->
                        Es),
     {NewEnv,NewNames,Subst}.
 
+%% True if F and As refer to append from
+%% erland_supercompiler:stdfuns/0.
+is_append(Env, {'fun',_,{function,F,2}}, [_,_]) ->
+    case dict:fetch(append, Env#env.libnames) of
+        F -> true;
+        _ -> false
+    end;
+is_append(_, _, _) ->
+    false.
+
 %% This takes an expression and splits it into smaller parts. Returns
 %% {NewEnv,NewExpr,Substitution}. The original expression can be
 %% recovered by applying the substitution to the new expression.
 split(Env0,{call,L,F,As}) ->
-    %% Extract the operator and all operands.
-    {Env1,[X|Xs],S} = gensyms(Env0, L, "Tmp", [F|As]),
-    {Env1,{call,L,X,Xs},S};
+    case is_append(Env0, F, As) of
+        true ->
+            %% Be less aggressive with append. Only the second
+            %% argument becomes a variable.
+            [A0,A1] = As,
+            {Env1,[X1],S} = gensyms(Env0, L, "Tmp", [A1]),
+            {Env1,{call,L,F,[A0,X1]},S};
+        _ ->
+            %% Extract the operator and all operands.
+            {Env1,[X|Xs],S} = gensyms(Env0, L, "Tmp", [F|As]),
+            {Env1,{call,L,X,Xs},S}
+    end;
 split(Env0,{op,L,Op,A,B}) ->
     %% Extract both operands.
     {Env1,[X0,X1],S} = gensyms(Env0, L, "Tmp", [A,B]),

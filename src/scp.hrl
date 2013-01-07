@@ -24,7 +24,10 @@
               name = "",
               %% The whistle can be disabled.
               whistle_enabled = true,
-              no_whistling = sets:new()}).
+              no_whistling = sets:new(),
+              %% The gensym'd names for stdfuns().
+              libnames = dict:new()
+             }).
 
 -define(IS_CONST_TYPE(T),
         T=='integer';

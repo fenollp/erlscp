@@ -19,7 +19,8 @@ parse_transform(Forms0, _Options) ->
     NoWhistling = attrs(no_whistle, Forms),
     Env1 = #env{global = Global,
                 seen_vars = function_names(Forms),
-                no_whistling = sets:from_list(NoWhistling)},
+                no_whistling = sets:from_list(NoWhistling),
+                libnames = Libnames},
     Ret = forms(Forms, Env1),
     ?DEBUG("After: ~p~n", [Ret]),
     Ret.
