@@ -229,6 +229,10 @@ msg(Env0, Infvs, {call,L,F={atom,_,N},As1},{call,_,{atom,_,N},As2})
                        {Env0,[]},
                        lists:zip(As1, As2)),
     {Env3,{call,L,F,As},S};
+msg(Env0, Infvs, {'case',L,E1,Cs},{'case',_,E2,Cs}) ->
+    %% TODO: less identical clauses
+    {Env1,E,S} = msg(Env0, Infvs, E1, E2),
+    {Env1,{'case',L,E,Cs},S};
 %% msg(Env0, Infvs, {'case',L,E1,Cs1},{'case',_,E2,Cs2})
 %%   when length(Cs1) == length(Cs2) ->
 %%     %% The two cases may be the same, except alpha conversion has
