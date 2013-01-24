@@ -624,6 +624,8 @@ generalize(Env0, E1, E2) ->
     %% Apply the new substitution to the driven simplification of E1.
     %% The subexpressions of E1 and E1 itself has now been driven in
     %% the empty context.
+    %% TODO: is it possible that Expr1 does not contain all the split
+    %% variables now? If so, must residualize for effect.
     ?DEBUG("Expr1: ~p~nSubst: ~p~n",[Expr1,dict:to_list(Subst)]),
     Expr = scp_expr:subst(Subst, Expr1),
     %% The bindings going out is the union of the new bindings in Expr
