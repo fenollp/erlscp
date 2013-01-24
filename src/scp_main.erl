@@ -370,6 +370,8 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
     ?DEBUG("Call: ~p, ~w/~w, R: ~p~n", [Funterm,Name,Arity,R]),
     ?DEBUG("Fun: ~p~n", [Fun0]),
     L = plug(Funterm, R),
+    %% TODO: there will be trouble if some of the free variables of L
+    %% appear multiple times and there is a folding or a new function.
     FV = scp_expr:free_variables(Env0#env.bound, L),
     %% First try to find a renaming.
     case scp_expr:find_renaming(Env0, L) of
