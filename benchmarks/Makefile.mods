@@ -1,0 +1,16 @@
+# -*-makefile-*-
+#EBIN=ebin-scp
+#ERLC_FLAGS=-pa ../ebin -DSUPERCOMPILE
+SOURCES=$(wildcard modules/*.erl)
+HEADERS=$(wildcard modules/*.hrl)
+OBJECTS=$(SOURCES:modules/%.erl=$(EBIN)/%.beam)
+PARSED=$(SOURCES:modules/%.erl=$(EBIN)/%.P)
+all: $(OBJECTS) $(PARSED)
+$(EBIN)/%.beam: modules/%.erl $(HEADERS) Makefile
+	@mkdir -p $(EBIN)
+	erlc $(ERLC_FLAGS) -o $(EBIN)/ $<
+$(EBIN)/%.P: modules/%.erl $(HEADERS) Makefile
+	@mkdir -p $(EBIN)
+	erlc -P $(ERLC_FLAGS) -o $(EBIN)/ $<
+clean:
+	-rm -f $(OBJECTS) $(PARSED)
