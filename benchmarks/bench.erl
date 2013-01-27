@@ -4,8 +4,10 @@
 benchmarks() ->
     [{append3,      10000},
      {append3pp,    10000},
+     {flip,         30},
      {sumsqs,       100},
      {sumsqs_lc,    100},
+     {sumsqtr,      30},
      {to_utf8,      1000},
      {vecdot,       10000},
      {vecdot_int,   10000}].
