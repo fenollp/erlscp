@@ -4,7 +4,7 @@ SOURCES=$(wildcard *.erl)
 HEADERS=$(wildcard *.hrl)
 OBJECTS=$(SOURCES:%.erl=$(EBIN)/%.beam)
 
-all: $(OBJECTS) run
+all: $(OBJECTS) run.txt
 
 $(EBIN)/%.beam: %.erl $(HEADERS) Makefile
 	@mkdir -p $(EBIN)
@@ -23,10 +23,13 @@ clean:
 	@make -f Makefile.mods clean EBIN=ebin-noscp
 	@make -f Makefile.mods clean EBIN=ebin-hipe_scp
 	@make -f Makefile.mods clean EBIN=ebin-hipe_noscp
-	-rm -f $(OBJECTS)
+	-rm -f $(OBJECTS) run.txt
 
-run: scp noscp hipe_scp hipe_noscp
-	erl -noshell -pa ebin -pa ebin-noscp -eval 'bench:run(noscp)' -s init stop
-	erl -noshell -pa ebin -pa ebin-scp -eval 'bench:run(scp)' -s init stop
-	erl -noshell -pa ebin -pa ebin-hipe_noscp -eval 'bench:run(hipe_noscp)' -s init stop
-	erl -noshell -pa ebin -pa ebin-hipe_scp -eval 'bench:run(hipe_scp)' -s init stop
+run.txt: scp noscp hipe_scp hipe_noscp
+	erl -noshell -pa ebin -pa ebin-noscp -eval 'bench:run(noscp)' -s init stop > run.txt
+	erl -noshell -pa ebin -pa ebin-scp -eval 'bench:run(scp)' -s init stop >> run.txt
+	erl -noshell -pa ebin -pa ebin-hipe_noscp -eval 'bench:run(hipe_noscp)' -s init stop >> run.txt
+	erl -noshell -pa ebin -pa ebin-hipe_scp -eval 'bench:run(hipe_scp)' -s init stop >> run.txt
+
+summary: run.txt
+	erl -noshell -pa ebin -eval 'bench:summary("run.txt")' -s init stop
