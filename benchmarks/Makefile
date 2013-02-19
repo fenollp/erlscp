@@ -4,7 +4,7 @@ SOURCES=$(wildcard *.erl)
 HEADERS=$(wildcard *.hrl)
 OBJECTS=$(SOURCES:%.erl=$(EBIN)/%.beam)
 
-all: $(OBJECTS) run.txt
+all: $(OBJECTS) summary
 
 $(EBIN)/%.beam: %.erl $(HEADERS) Makefile
 	@mkdir -p $(EBIN)
