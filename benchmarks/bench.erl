@@ -75,7 +75,7 @@ summary(Filename) ->
             {_,HiPE_scp} = lists:keyfind(hipe_scp, 1, Terms),
             io:fwrite("\\emph{Benchmark} & \\emph{Bytecode (BEAM)} & \\emph{Native code (HiPE)} \\\\~n"),
             compare_wallclock(benchmarks(), Noscp, Scp, HiPE_noscp, HiPE_scp),
-            io:fwrite("~n\\emph{Benchmark} & \\emph{Reduction} \\\\~n",[]),
+            io:fwrite("~n\\emph{Benchmark} & \\emph{Remaining allocations} \\\\~n",[]),
             compare(lists:zip(Noscp, Scp), gc)
     end.
 
@@ -84,7 +84,7 @@ compare(Data, What) ->
 compare1({{Module,I,OriginalData},{Module,I,ImprovedData}}, What=gc) ->
     {_,_,Original} = lists:keyfind(What, 1, OriginalData),
     {_,_,Improved} = lists:keyfind(What, 1, ImprovedData),
-    io:fwrite("~s & $~.2f$ \\\\~n",[escape(Module),-(1.0-(Improved/Original))]).
+    io:fwrite("~s & $~.2f$ \\\\~n",[escape(Module),(Improved/Original)]).
 
 compare_wallclock([], [], [], [], []) ->
     ok;
