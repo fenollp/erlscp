@@ -4,9 +4,11 @@ HEADERS=$(wildcard src/*.hrl)
 OBJECTS=$(SOURCES:src/%.erl=ebin/%.beam)
 all: $(OBJECTS) test
 ebin/%.beam : src/%.erl $(HEADERS) Makefile
+	@mkdir -p ebin
 	erlc $(ERLC_FLAGS) -o ebin/ $<
 clean:
-	-rm $(OBJECTS)
+	-rm -f $(OBJECTS)
+	-rmdir ebin
 test:
 	erl -noshell -pa ebin \
 	  -eval 'eunit:test("ebin",[verbose])' \
