@@ -30,6 +30,9 @@ Those interested in the algorithm may peruse these publications:
   Peter A. Jonsson. /Time- and Size-Efficient Supercompilation/. PhD
   thesis, Luleå University of Technology, Luleå Sweden, 2011.
 
+  Göran Weinholt. /Supercompiling Erlang/. Master's thesis, Chalmers
+  University of Technology, Gothenburg, 2013.
+
 * Before you use erlscp
 
 Before using erlscp you will need to have Erlang installed. The only
