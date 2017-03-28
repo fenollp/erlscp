@@ -6,4 +6,9 @@ otp_release:
   - 17.5
   - R16B02
   - R15B03
-script: make
+script:
+  - make
+  - make test
+  - git add -A ebin/*.S
+  - git --no-pager diff
+  - git --no-pager diff --cached
