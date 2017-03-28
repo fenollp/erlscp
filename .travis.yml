@@ -8,6 +8,7 @@ otp_release:
   - R15B03
 script:
   - make
+  - make test-original
   - make test
   - git add -A ebin/*.S
   - git --no-pager diff
