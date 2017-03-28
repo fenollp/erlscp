@@ -42,4 +42,3 @@
     {move,{atom,deforestation0},{x,0}}.
     {line,[]}.
     {call_ext_only,2,{extfunc,erlang,get_module_info,2}}.
-
