@@ -4,7 +4,7 @@
 -record(r, {'1', '2', '3', '4', '5'}).
 
 a() ->
-    S = #{some => "state"},
+    S = {some, "state"},
     Fs = [fun two/2
          ,fun three/2
          ,fun five/2

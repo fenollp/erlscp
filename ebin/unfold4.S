@@ -119,7 +119,7 @@
     {allocate,0,2}.
     {move,{x,0},{x,2}}.
     {move,{x,1},{x,0}}.
-    {move,{literal,#{some => "state"}},{x,1}}.
+    {move,{literal,{some,"state"}},{x,1}}.
     {line,[{location,"test/unfold4.erl",13}]}.
     {call_fun,2}.
     {deallocate,0}.
