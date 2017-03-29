@@ -15,7 +15,7 @@ clean:
 test-original:
 	erl -noshell -pa ebin -eval 'eunit:test("ebin",[verbose])' -s init stop
 
-test: test_deforestation0 test_deforestation1
+test: $(patsubst test/%.erl,test_%,$(wildcard test/*.erl))
 test_%: ERLC = erlc -o ebin -pa ebin +to_asm
 test_%: SUPERC = $(ERLC) +'{parse_transform, erlang_supercompiler}'
 test_%: $(OBJECTS)
