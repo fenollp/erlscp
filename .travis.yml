@@ -1,18 +1,30 @@
 sudo: false
+
 language: erlang
+
 otp_release:
   - 19.2
   - 18.2
   - 17.5
   - R16B02
   - R15B03
+
 script:
   - make
   - make test-original
-  - make test
+  - make test_deforestation0
+  - make test_deforestation1
+  - make test_deforestation2
+  - make test_unfold0
+  - make test_unfold1
+  - make test_unfold2
+  - make test_unfold3
+  - make test_unfold4
+  - make test_unfold5
   - git add -A ebin/*.S
   - git --no-pager diff
   - git --no-pager diff --cached
+
 matrix:
   fast_finish: true
   allow_failures:
