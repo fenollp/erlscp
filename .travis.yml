@@ -12,6 +12,7 @@ otp_release:
 script:
   - make
   - make test-original
+  - make S
   - make test_deforestation0
   - make test_deforestation1
   - make test_deforestation2
@@ -21,7 +22,7 @@ script:
   - make test_unfold3
   - make test_unfold4
   - make test_unfold5
-  - git add -A ebin/*.S
+  - git add -A -f ebin/*.S
   - git --no-pager diff
   - git --no-pager diff --cached
 

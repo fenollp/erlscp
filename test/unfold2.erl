@@ -11,6 +11,11 @@ a() ->
          ],
     lists:foldl(fun (F, R) -> F(R) end, #r{}, Fs).
 
+two(R) -> setelement(1+2, R, "deux").
+'TWO'(R) -> setelement(1+2, R, "DEUX").
+three(R) -> setelement(1+3, R, "trois").
+five(R) -> setelement(1+5, R, "cinq").
+
 b() ->
     #r{'2' = "DEUX"
       ,'3' = "trois"
