@@ -17,7 +17,7 @@ script:
   # - make test_deforestation1
   # - make test_deforestation2
   - make test_deforestation3
-  - make test_deforestation4
+  # - make test_deforestation4
   # - make test_unfold0
   # - make test_unfold1
   # - make test_unfold2
