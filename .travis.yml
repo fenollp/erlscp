@@ -6,10 +6,8 @@ otp_release:
   - 19.2
   - 18.3
   - 17.5
-  - R16B03
-  - R16B02
+  - R16B03-1
   - R15B03
-  - R14B04
 
 matrix:
   fast_finish: true
@@ -17,9 +15,7 @@ matrix:
     - otp_release: 19.2
     - otp_release: 18.3
     - otp_release: 17.5
-    - otp_release: R16B03
-    - otp_release: R16B02
-    - otp_release: R14B04
+    - otp_release: R16B03-1
 
 install:
   - wget https://s3.amazonaws.com/rebar3/rebar3 && chmod +x ./rebar3
