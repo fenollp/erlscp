@@ -4,14 +4,34 @@ language: erlang
 
 otp_release:
   - 19.2
-  - 18.2
+  - 18.3
   - 17.5
+  - R16B03
   - R16B02
   - R15B03
+  - R14B04
+
+matrix:
+  fast_finish: true
+  allow_failures:
+    - otp_release: 19.2
+    - otp_release: 18.3
+    - otp_release: 17.5
+    - otp_release: R16B03
+    - otp_release: R16B02
+    - otp_release: R14B04
+
+install:
+  - wget https://s3.amazonaws.com/rebar3/rebar3 && chmod +x ./rebar3
+  - export PATH=$PATH:$PWD
+
+before_script:
+  - rebar3 --version
+  - kerl list installations
 
 script:
+  - set -e
   - make
-  - make test-original
   - make S
   - make test_deforestation0
   # - make test_deforestation1
@@ -27,11 +47,3 @@ script:
   - git add -A -f ebin/*.S
   - git --no-pager diff
   - git --no-pager diff --cached
-
-matrix:
-  fast_finish: true
-  allow_failures:
-    - otp_release: 19.2
-    - otp_release: 18.2
-    - otp_release: 17.5
-    - otp_release: R16B02
