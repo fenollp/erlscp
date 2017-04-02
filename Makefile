@@ -1,24 +1,16 @@
-SOURCES = $(wildcard src/*.erl)
-HEADERS = $(wildcard src/*.hrl)
-OBJECTS = $(SOURCES:src/%.erl=ebin/%.beam)
-
-ERLC = erlc -o ebin -pa ebin
-ERL  = erl -noshell -pa ebin +A0 -boot start_clean
-
-all: $(OBJECTS)
-
-ebin/%.beam : src/%.erl $(HEADERS) Makefile
-	mkdir -p ebin
-	erlc -pa ebin -DTEST -o ebin/ $<
+all:
+	rebar3 do compile,eunit
 
 clean:
 	$(if $(wildcard ebin/*.beam), rm ebin/*.beam)
-	rmdir ebin
 
-test-original:
-	erl -noshell -pa ebin -eval 'eunit:test("ebin",[verbose])' -s init stop
+ASM = $(wildcard test/deforestation*.erl test/unfold*.erl)
 
-test: S $(patsubst test/%.erl,test_%,$(wildcard test/*.erl))
+PA = _build/default/lib/erlscp/ebin/
+ERLC = erlc -o ebin -pa $(PA)
+ERL  = erl -noshell -pa $(PA) -pa ebin +A0 -boot start_clean
+
+test: S $(patsubst test/%.erl,test_%,$(ASM))
 test_%: SUPERC = $(ERLC) +to_asm +'{parse_transform, erlang_supercompiler}'
 test_%: $(OBJECTS)
 	$(SUPERC) test/$*.erl
@@ -26,7 +18,7 @@ test_%: $(OBJECTS)
 	$(ERLC) +to_asm test/$*.erl
 	bash -c '[[ 0 -eq $$(git status --porcelain ebin/$*.S ebin/$*_.S | wc -l) ]]'
 
-S: $(patsubst test/%.erl,S_%,$(wildcard test/*.erl))
+S: $(patsubst test/%.erl,S_%,$(ASM))
 	bash -c '[[ 0 -eq $$(git status --porcelain ebin/*.S | wc -l) ]]'
 S_%: test/%.erl
 	$(ERLC) +to_asm test/$*.erl

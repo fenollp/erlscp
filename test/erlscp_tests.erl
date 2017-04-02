@@ -21,21 +21,10 @@
 %% DEALINGS IN THE SOFTWARE.
 
 %% Various test cases for the supercompiler.
-
--module(testcases).
--export([ap/2, ap/3,
-         rev/2, map/2, zip/2, flatten/1,
-         double/1,
-         sum/1, square/1, sumsqs/1, seq/2, sumsq/1,
-         zipmap/4, mapsq/1, f/1, g/1, mapsq2/1, sumf/1,
-         zipwith/3, vecdot/2,
-         ap_opl/3, ap_opr/3,
-         sort/1,
-         %%to_utf8/1, string_to_utf8/1,
-         same_length/2
-        ]).
--include("scp.hrl").                            %merely enables EUnit
+-module(erlscp_tests).
 -compile({parse_transform, erlang_supercompiler}).
+
+-include_lib("eunit/include/eunit.hrl").
 
 ap([],Ys) -> Ys;
 ap([X|Xs],Ys) -> [X|ap(Xs,Ys)].
