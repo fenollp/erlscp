@@ -1,7 +1,12 @@
 {module, deforestation1}.  %% version = 0
+
 {exports, [{a,0},{b,0},{module_info,0},{module_info,1}]}.
+
 {attributes, []}.
+
 {labels, 9}.
+
+
 {function, a, 0, 2}.
   {label,1}.
     {line,[{location,"test/deforestation1.erl",4}]}.
@@ -9,6 +14,8 @@
   {label,2}.
     {move,{literal,"0.1.0"},{x,0}}.
     return.
+
+
 {function, b, 0, 4}.
   {label,3}.
     {line,[{location,"test/deforestation1.erl",6}]}.
@@ -16,6 +23,8 @@
   {label,4}.
     {move,{literal,"0.1.0"},{x,0}}.
     return.
+
+
 {function, module_info, 0, 6}.
   {label,5}.
     {line,[]}.
@@ -24,6 +33,8 @@
     {move,{atom,deforestation1},{x,0}}.
     {line,[]}.
     {call_ext_only,1,{extfunc,erlang,get_module_info,1}}.
+
+
 {function, module_info, 1, 8}.
   {label,7}.
     {line,[]}.
