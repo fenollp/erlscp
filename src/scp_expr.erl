@@ -254,6 +254,7 @@ ac(Env,S,E={var,L,V}) ->
 ac(Env,S,E={integer,_,_}) -> {Env,S,E};
 ac(Env,S,E={float,_,_}) -> {Env,S,E};
 ac(Env,S,E={atom,_,_}) -> {Env,S,E};
+ac(Env,S,E={bin,_,_}) -> {Env,S,E};
 ac(Env,S,E={string,_,_}) -> {Env,S,E};
 ac(Env,S,E={char,_,_}) -> {Env,S,E};
 ac(Env,S,E={nil,_}) -> {Env,S,E};
