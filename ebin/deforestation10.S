@@ -44,7 +44,7 @@
   {label,7}.
     {move,{atom,badarg},{x,0}}.
     {line,[{location,"test/deforestation10.erl",6}]}.
-    {call_ext,1,{extfunc,erlang,error,1}}.
+    {call_ext_last,1,{extfunc,erlang,error,1},1}.
 
 
 {function, b, 0, 9}.

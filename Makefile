@@ -27,6 +27,7 @@ test_%: $(OBJECTS)
 	bash -c '[[ 0 -eq $$(git status --porcelain ebin/$*.S ebin/$*_.S | wc -l) ]]'
 
 S: $(patsubst test/%.erl,S_%,$(ASM))
+	git --no-pager diff -- ebin
 	bash -c '[[ 0 -eq $$(git status --porcelain ebin/*.S | wc -l) ]]'
 S_%: test/%.erl
 	$(ERLC) +to_asm test/$*.erl
