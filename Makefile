@@ -27,6 +27,7 @@ test_%: $(OBJECTS)
 	$(ERLC) +to_asm test/$*.erl
 	git add -A -f ebin/$*.S ebin/$*_.S
 	git --no-pager diff --cached
+	$(ERLC) test/$*.erl
 	$(ERL) -eval 'R = $*:a(), R = $*:b().' -s init stop
 	bash -c '[[ 0 -eq $$(git status --porcelain ebin/$*.S ebin/$*_.S | wc -l) ]]'
 
