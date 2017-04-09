@@ -4,6 +4,12 @@ all:
 clean:
 	$(if $(wildcard ebin/*.beam), rm ebin/*.beam)
 
+ASM = $(wildcard test/deforestation*.erl test/unfold*.erl)
+
+PA = _build/default/lib/erlscp/ebin/
+ERLC = erlc -o ebin -pa $(PA) -pa ebin
+ERL  = erl -noshell -pa $(PA) -pa ebin +A0 -boot start_clean
+
 old: ebin $(patsubst src/%.erl,ebin/%.beam,$(wildcard src/*.erl)) $(wildcard src/*.hrl) Makefile
 ebin:
 	mkdir $@
@@ -11,12 +17,7 @@ ebin/%.beam: src/%.erl
 	erlc -pa ebin -o ebin -DDEBUG $?
 test.%: old
 	erlc -pa ebin -o ebin +'{parse_transform, erlang_supercompiler}' test/$*.erl
-
-ASM = $(wildcard test/deforestation*.erl test/unfold*.erl)
-
-PA = _build/default/lib/erlscp/ebin/
-ERLC = erlc -o ebin -pa $(PA) -pa ebin
-ERL  = erl -noshell -pa $(PA) -pa ebin +A0 -boot start_clean
+	$(ERL) -eval 'R = $*:a(), R = $*:b().' -s init stop
 
 test: S $(patsubst test/%.erl,test_%,$(ASM))
 test_%: SUPERC = $(ERLC) +to_asm +'{parse_transform, erlang_supercompiler}'
@@ -26,6 +27,7 @@ test_%: $(OBJECTS)
 	$(ERLC) +to_asm test/$*.erl
 	git add -A -f ebin/$*.S ebin/$*_.S
 	git --no-pager diff --cached
+	$(ERL) -eval 'R = $*:a(), R = $*:b().' -s init stop
 	bash -c '[[ 0 -eq $$(git status --porcelain ebin/$*.S ebin/$*_.S | wc -l) ]]'
 
 S: $(patsubst test/%.erl,S_%,$(ASM))
