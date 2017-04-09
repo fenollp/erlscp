@@ -321,7 +321,13 @@ ac(Env0,S0,{block,L,[A0,B0]}) ->
     %% Variables defined in A are bound in B.
     {Env1,S1,A} = ac(Env0,S0,A0),
     {Env,S,B} = ac(Env1,S1,B0),
-    {Env,S,{block,L,[A,B]}}.
+    {Env,S,{block,L,[A,B]}};
+
+ac(Env, S, Expr) ->
+    io:format("~s:ac/3 Env ~p\n", [?MODULE, Env]),
+    io:format("~s:ac/3 S ~p\n", [?MODULE, S]),
+    io:format("~s:ac/3 Expr ~p\n", [?MODULE, Expr]),
+    throw(badimpl).
 
 ac_list(Env0,S0,[E0|Es0]) ->
     %% The rule here is that definitions made in expressions are
