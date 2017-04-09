@@ -24,6 +24,7 @@ test_%: $(OBJECTS)
 	$(SUPERC) test/$*.erl
 	mv ebin/$*.S ebin/$*_.S
 	$(ERLC) +to_asm test/$*.erl
+	git --no-pager diff -- ebin/$*.S ebin/$*_.S
 	bash -c '[[ 0 -eq $$(git status --porcelain ebin/$*.S ebin/$*_.S | wc -l) ]]'
 
 S: $(patsubst test/%.erl,S_%,$(ASM))
