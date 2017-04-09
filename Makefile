@@ -27,6 +27,8 @@ test_%: $(OBJECTS)
 	# git --no-pager diff -- ebin/$*.S ebin/$*_.S
 	git --no-pager diff
 	git status
+	cat ebin/deforestation1_.S
+	ls -lha ebin/deforestation1_.S
 	bash -c '[[ 0 -eq $$(git status --porcelain ebin/$*.S ebin/$*_.S | wc -l) ]]'
 
 S: $(patsubst test/%.erl,S_%,$(ASM))
