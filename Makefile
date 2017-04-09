@@ -4,6 +4,14 @@ all:
 clean:
 	$(if $(wildcard ebin/*.beam), rm ebin/*.beam)
 
+old: ebin $(patsubst src/%.erl,ebin/%.beam,$(wildcard src/*.erl)) $(wildcard src/*.hrl) Makefile
+ebin:
+	mkdir $@
+ebin/%.beam: src/%.erl
+	erlc -pa ebin -o ebin $?
+test.%: old
+	erlc -pa ebin -o ebin +'{parse_transform, erlang_supercompiler}' test/$*.erl
+
 ASM = $(wildcard test/deforestation*.erl test/unfold*.erl)
 
 PA = _build/default/lib/erlscp/ebin/
