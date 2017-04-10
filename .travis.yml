@@ -12,10 +12,7 @@ otp_release:
 matrix:
   fast_finish: true
   allow_failures:
-    - otp_release: 19.2
-    - otp_release: 18.3
-    - otp_release: 17.5
-    - otp_release: R16B03-1
+    - otp_release: R15B03
 
 install:
   - wget https://s3.amazonaws.com/rebar3/rebar3 && chmod +x ./rebar3
@@ -31,19 +28,19 @@ script:
   - rebar3 compile
   - rebar3 xref
   # - rebar3 eunit
-  # - make S
+  - make S
   - make test_deforestation0
   - make test_deforestation1
   # - make test_deforestation2
   - make test_deforestation3
   - make test_deforestation4
-  # - make test_deforestation10
-  # - make test_unfold0
-  # - make test_unfold1
-  # - make test_unfold2
-  # - make test_unfold3
-  # - make test_unfold4
-  # - make test_unfold5
+  - make test_deforestation10
+  - make test_unfold0
+  - make test_unfold1
+  - make test_unfold2
+  - make test_unfold3
+  - make test_unfold4
+  - make test_unfold5
   - git add -A -f ebin/*.S
   - git --no-pager diff
   - git --no-pager diff --cached

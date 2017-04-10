@@ -15,6 +15,7 @@ ebin:
 	mkdir $@
 ebin/%.beam: src/%.erl
 	erlc -pa ebin -o ebin -DLOG $?
+test-old: $(patsubst test/%.erl,test.%,$(ASM))
 test.%: old
 	erlc -pa ebin -o ebin +'{parse_transform, erlang_supercompiler}' test/$*.erl
 	$(ERL) -eval 'R = $*:a(), R = $*:b().' -s init stop
