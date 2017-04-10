@@ -62,5 +62,8 @@
         ?IS_CONST_TYPE(element(1,E));
             element(1,E)=='tuple', element(3,E)==[]).
 
-%%-define(DEBUG(P,A), (io:fwrite(P,A))).
+-ifdef(LOG).
+-define(DEBUG(P,A), (io:fwrite(P,A))).
+-else.
 -define(DEBUG(P,A), (false)).
+-endif.

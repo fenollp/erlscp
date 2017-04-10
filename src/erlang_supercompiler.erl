@@ -43,8 +43,12 @@ parse_transform(Forms0, _Options) ->
                 seen_vars = function_names(Forms),
                 no_whistling = sets:from_list(NoWhistling),
                 libnames = Libnames},
-    Ret = forms(Forms, Env1),
-    ?DEBUG("After: ~p~n", [Ret]),
+    Ret0 = forms(Forms, Env1),
+    ?DEBUG("After: ~p~n", [Ret0]),
+    Ret = lists:takewhile(fun ({eof,_}) -> false; (_) -> true end, Ret0),
+    %%FIXME: do not generate forms after emitting eof in the first place.
+    %%Note: this does not happen on R15B03.
+    ?DEBUG("Really after: ~p~n", [Ret]),
     Ret.
 
 forms(Forms0, Env) ->
@@ -56,20 +60,19 @@ form(F={function,_,Name,Arity,_Clauses0}, Env0) ->
     %% functions are exported)?
     ?DEBUG("~n~nLooking at function: ~w/~w~n", [Name, Arity]),
     Expr0 = scp_expr:function_to_fun(F),
-    Seen = sets:union(Env0#env.seen_vars,
-                      erl_syntax_lib:variables(Expr0)),
-    Env1 = Env0#env{bound = sets:new(),
-                    seen_vars = Seen,
-                    w=[], ls=[], found=[],
-                    name = atom_to_list(Name),
-                    whistle_enabled =
-                        not sets:is_element({Name,Arity},
-                                            Env0#env.no_whistling)},
+    Seen = sets:union(Env0#env.seen_vars, erl_syntax_lib:variables(Expr0)),
+    Env1 = Env0#env{bound = sets:new()
+                   ,seen_vars = Seen
+                   ,w=[], ls=[], found=[]
+                   ,name = atom_to_list(Name)
+                   ,whistle_enabled = not sets:is_element({Name,Arity}, Env0#env.no_whistling)
+                   },
     {Env2,Expr1} = scp_expr:alpha_convert(Env1, Expr0),
     {Env,Expr2} = scp_main:drive(Env2, Expr1, []),
     {Expr,Letrecs} = scp_expr:extract_letrecs(Expr2),
-    Functions = [ scp_expr:fun_to_function(scp_tidy:function(Ex), Na, Ar) ||
-                    {Na, Ar, Ex} <- Letrecs ],
+    Functions = [scp_expr:fun_to_function(scp_tidy:function(Ex), Na, Ar)
+                 || {Na, Ar, Ex} <- Letrecs
+                ],
     Function = scp_expr:fun_to_function(scp_tidy:function(Expr), Name, Arity),
     {[Function|Functions],Env};
 form(X, Env) ->
