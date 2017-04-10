@@ -274,6 +274,7 @@ ac(Env0,S0,{tuple,L,Es0}) ->
     {Env,S,Es} = ac_list(Env0,S0,Es0),
     {Env,S,{tuple,L,Es}};
 
+ac(Env,S,E={record,_,_,_}) -> {Env,S,E};
 ac(Env0,S0,{record_field,L,R0,F0}) ->
     {Env,S,[R,F]} = ac_list(Env0,S0,[R0,F0]),
     {Env,S,{record_field,L,R,F}};
