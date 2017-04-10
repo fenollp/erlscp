@@ -47,6 +47,7 @@ parse_transform(Forms0, _Options) ->
     ?DEBUG("After: ~p~n", [Ret0]),
     Ret = lists:takewhile(fun ({eof,_}) -> false; (_) -> true end, Ret0),
     %%FIXME: do not generate forms after emitting eof in the first place.
+    %%Note: this does not happen on R15B03.
     ?DEBUG("Really after: ~p~n", [Ret]),
     Ret.
 
