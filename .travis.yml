@@ -39,7 +39,7 @@ script:
   - make test_unfold1
   - make test_unfold2
   - make test_unfold3
-  - make test_unfold4
+  # - make test_unfold4
   - make test_unfold5
   - git add -A -f ebin/*.S
   - git --no-pager diff
