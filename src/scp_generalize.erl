@@ -70,7 +70,7 @@ peel0(E1, E2, InFun) ->
                     A2 = erl_syntax:atom_value(E2),
                     A1 == A2;
                 integer when InFun =/= false ->
-                   erl_syntax:integer_value(E1) ==
+                    erl_syntax:integer_value(E1) ==
                         erl_syntax:integer_value(E2);
                 T when ?IS_CONST_TYPE(T) ->
                     true;

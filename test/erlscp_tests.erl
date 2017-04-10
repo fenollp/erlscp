@@ -142,9 +142,9 @@ to_utf8(Code, Len, I, Set, Mask) when Len >= I ->
     A = if Len == I -> Code; true -> Code bsr (6 * (Len - I)) end,
     B = if Set == 0 -> A; true -> A bor Set end,
     [if Mask == 16#FF -> B; true -> B band Mask end];
-    %% A = case Len of I -> Code; _ -> Code bsr (6 * (Len - I)) end,
-    %% B = case Set of 0 -> A; _ -> A bor Set end,
-    %% [case Mask of 16#FF -> B; _ -> B band Mask end];
+%% A = case Len of I -> Code; _ -> Code bsr (6 * (Len - I)) end,
+%% B = case Set of 0 -> A; _ -> A bor Set end,
+%% [case Mask of 16#FF -> B; _ -> B band Mask end];
 to_utf8(_, _, _, _, _) ->
     [].
 
@@ -226,9 +226,9 @@ unbound_test() ->
 
 trival_cons_test() ->
     1 = case [1] of
-        [1] -> 1;
-        [2] -> 0
-    end.
+            [1] -> 1;
+            [2] -> 0
+        end.
 
 match_test() ->
     X = 1,

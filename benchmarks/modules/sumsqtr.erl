@@ -24,7 +24,7 @@ check([Tree], S) ->
 
 %% Example used in Jonsson's dissertation, from Wadler.
 square(X) ->
-     X * X.
+    X * X.
 
 sumtr({leaf,X}) ->
     X;

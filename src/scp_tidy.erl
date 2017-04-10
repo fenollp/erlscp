@@ -200,9 +200,9 @@ not_used_elsewhere([], _) -> true.
 %% fun expr), so it's a closed expression, which makes things easy.
 %% Different clauses can use the same names without problem.
 nicer_names(F0) ->
-%% Extract all the variables from the
-%% expression and make a dict containing new unique and nicer names,
-%% then do a renaming with erl_syntax:map/2.
+    %% Extract all the variables from the
+    %% expression and make a dict containing new unique and nicer names,
+    %% then do a renaming with erl_syntax:map/2.
     Cs = lists:map(fun rename_clause/1,
                    erl_syntax:fun_expr_clauses(F0)),
     F = erl_syntax:fun_expr(Cs),
