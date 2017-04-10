@@ -4,7 +4,7 @@
 
 {attributes, []}.
 
-{labels, 22}.
+{labels, 21}.
 
 
 {function, a, 0, 2}.
@@ -32,7 +32,7 @@
   {label,5}.
     {move,{atom,badarg},{x,0}}.
     {line,[{location,"test/deforestation10.erl",6}]}.
-    {call_ext_last,1,{extfunc,erlang,error,1},0}.
+    {call_ext,1,{extfunc,erlang,error,1}}.
 
 
 {function, a, 1, 7}.
@@ -63,7 +63,7 @@
   {label,10}.
     {move,{atom,badarg},{x,0}}.
     {line,[{location,"test/deforestation10.erl",6}]}.
-    {call_ext_last,1,{extfunc,erlang,error,1},1}.
+    {call_ext,1,{extfunc,erlang,error,1}}.
 
 
 {function, b, 0, 12}.
@@ -71,61 +71,55 @@
     {line,[{location,"test/deforestation10.erl",11}]}.
     {func_info,{atom,deforestation10},{atom,b},0}.
   {label,12}.
-    {move,{literal,[bla]},{x,0}}.
-    {test,is_nonempty_list,{f,13},[{x,0}]}.
-    {get_list,{x,0},{x,1},{x,2}}.
-    {test,is_nil,{f,13},[{x,2}]}.
     {move,{literal,"usage: ...\n"},{x,1}}.
     {move,nil,{x,2}}.
     {move,{atom,standard_error},{x,0}}.
     {line,[{location,"test/deforestation10.erl",12}]}.
     {call_ext_only,3,{extfunc,io,format,3}}.
+
+
+{function, b, 1, 14}.
   {label,13}.
-    if_end.
-
-
-{function, b, 1, 15}.
-  {label,14}.
     {line,[{location,"test/deforestation10.erl",12}]}.
     {func_info,{atom,deforestation10},{atom,b},1}.
-  {label,15}.
-    {test,is_nonempty_list,{f,14},[{x,0}]}.
+  {label,14}.
+    {test,is_nonempty_list,{f,13},[{x,0}]}.
     {get_list,{x,0},{x,1},{x,2}}.
-    {test,is_nonempty_list,{f,16},[{x,2}]}.
+    {test,is_nonempty_list,{f,15},[{x,2}]}.
     {get_list,{x,2},{x,1},{x,3}}.
-    {test,is_nil,{f,17},[{x,3}]}.
+    {test,is_nil,{f,16},[{x,3}]}.
     {move,{literal,"usage: ...\n"},{x,1}}.
     {move,nil,{x,2}}.
     {move,{atom,standard_error},{x,0}}.
     {line,[{location,"test/deforestation10.erl",13}]}.
     {call_ext_only,3,{extfunc,io,format,3}}.
-  {label,16}.
-    {test,is_nil,{f,17},[{x,2}]}.
+  {label,15}.
+    {test,is_nil,{f,16},[{x,2}]}.
     {move,{literal,"usage: ...\n"},{x,1}}.
     {move,nil,{x,2}}.
     {move,{atom,standard_error},{x,0}}.
     {line,[{location,"test/deforestation10.erl",12}]}.
     {call_ext_only,3,{extfunc,io,format,3}}.
-  {label,17}.
+  {label,16}.
     {line,[{location,"test/deforestation10.erl",14}]}.
     {call_ext_only,1,{extfunc,do,the_thing,1}}.
 
 
-{function, module_info, 0, 19}.
-  {label,18}.
+{function, module_info, 0, 18}.
+  {label,17}.
     {line,[]}.
     {func_info,{atom,deforestation10},{atom,module_info},0}.
-  {label,19}.
+  {label,18}.
     {move,{atom,deforestation10},{x,0}}.
     {line,[]}.
     {call_ext_only,1,{extfunc,erlang,get_module_info,1}}.
 
 
-{function, module_info, 1, 21}.
-  {label,20}.
+{function, module_info, 1, 20}.
+  {label,19}.
     {line,[]}.
     {func_info,{atom,deforestation10},{atom,module_info},1}.
-  {label,21}.
+  {label,20}.
     {move,{x,0},{x,1}}.
     {move,{atom,deforestation10},{x,0}}.
     {line,[]}.
