@@ -31,7 +31,7 @@ script:
   - rebar3 compile
   - rebar3 xref
   # - rebar3 eunit
-  - make S
+  # - make S
   - make test_deforestation0
   - make test_deforestation1
   # - make test_deforestation2
