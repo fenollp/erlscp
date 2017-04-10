@@ -43,8 +43,11 @@ parse_transform(Forms0, _Options) ->
                 seen_vars = function_names(Forms),
                 no_whistling = sets:from_list(NoWhistling),
                 libnames = Libnames},
-    Ret = forms(Forms, Env1),
-    ?DEBUG("After: ~p~n", [Ret]),
+    Ret0 = forms(Forms, Env1),
+    ?DEBUG("After: ~p~n", [Ret0]),
+    Ret = lists:takewhile(fun ({eof,_}) -> false; (_) -> true end, Ret0),
+    %%FIXME: do not generate forms after emitting eof in the first place.
+    ?DEBUG("Really after: ~p~n", [Ret]),
     Ret.
 
 forms(Forms0, Env) ->
