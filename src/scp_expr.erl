@@ -210,32 +210,32 @@ subst_1(S, E) ->
 subst_fun(S) ->
     fun
         (E={var,_,'_'}) ->
-            E;
+                     E;
         (E={var,L,V}) ->
-            case dict:find(V, S) of
-                %% XXX: discards line info if the replacement is not a
-                %% variable.
-                {ok,{var,_,V1}} -> {var,L,V1};
-                {ok,V1} -> V1;
-                _ -> E
-            end;
+                     case dict:find(V, S) of
+                         %% XXX: discards line info if the replacement is not a
+                         %% variable.
+                         {ok,{var,_,V1}} -> {var,L,V1};
+                         {ok,V1} -> V1;
+                         _ -> E
+                     end;
         (E={'fun',L,{clauses,Cs0}}) ->
-            Cs = lists:map(fun (C={clause,Lc,H,G,B}) ->
-                                   Vars = lists:flatmap(fun scp_pattern:pattern_variables/1, H),
-                                   %% Remove shadowed variables from
-                                   %% the substitution.
-                                   S1 = dict:filter(fun (N,_) ->
-                                                            not lists:member(N, Vars)
-                                                    end,
-                                                    S),
-                                   subst(S1,C)
-                           end,
-                           Cs0),
-            {'fun',L,{clauses,Cs}};
+                     Cs = lists:map(fun (C={clause,Lc,H,G,B}) ->
+                                            Vars = lists:flatmap(fun scp_pattern:pattern_variables/1, H),
+                                            %% Remove shadowed variables from
+                                            %% the substitution.
+                                            S1 = dict:filter(fun (N,_) ->
+                                                                     not lists:member(N, Vars)
+                                                             end,
+                                                             S),
+                                            subst(S1,C)
+                                    end,
+                                    Cs0),
+                     {'fun',L,{clauses,Cs}};
         %% TODO: other places where shadowing takes place
         (E) ->
-            subst_1(S, E)
-    end.
+                     subst_1(S, E)
+             end.
 
 %% Alpha conversion. Generates fresh names for all variables
 %% introduced in the expression.
@@ -580,7 +580,7 @@ find_var_subst(B0, [{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T])
                     %%?DEBUG("Vars=~p~n",[Vars]),
                     B = sets:union(sets:from_list(Vars), B0),
                     Bodies = lists:flatmap(fun ({Body1,Body2}) ->
-                                               lists:zip(Body1,Body2)
+                                                   lists:zip(Body1,Body2)
                                            end,
                                            lists:zip(Bs1, Bs2)),
                     %% ?DEBUG("new work=~p~n", [lists:zip(Gs1, Gs2) ++
@@ -613,7 +613,7 @@ find_var_subst(B0, [{{'fun',_,{clauses,Cs1}},{'fun',_,{clauses,Cs2}}}|T])
                                          Ps1 ++ Ps2),
                     B = sets:union(sets:from_list(Vars), B0),
                     Bodies = lists:flatmap(fun ({Body1,Body2}) ->
-                                               lists:zip(Body1,Body2)
+                                                   lists:zip(Body1,Body2)
                                            end,
                                            lists:zip(Bs1, Bs2)),
                     Sd = dict:from_list(Ss),

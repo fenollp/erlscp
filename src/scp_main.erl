@@ -106,7 +106,7 @@ drive0(Env0, E={'fun',Lf,{function,G,Arity}}, R) -> %R3
     end;
 
 drive0(Env0, E0={constructor,L,Cons},
-      Ctxt=[#call_ctxt{args=Args},#case_ctxt{clauses=Cs0}|R]) -> %R4
+       Ctxt=[#call_ctxt{args=Args},#case_ctxt{clauses=Cs0}|R]) -> %R4
     ?DEBUG("R4~n",[]),
     E = scp_expr:make_call(L, E0, Args),
     ?DEBUG("Known constructor in a case.~n~p~n~p~n",[E,Ctxt]),
@@ -123,12 +123,12 @@ drive0(Env0, E0={constructor,L,Cons},
     end;
 
 drive0(Env0, {'fun',_,{clauses,[{clause,_,[],[],Body}]}},
-      [#call_ctxt{line=L,args=[]}|R]) ->
+       [#call_ctxt{line=L,args=[]}|R]) ->
     %% Let with no bindings.
     ?DEBUG("R7 end~n",[]),
     drive(Env0, scp_expr:list_to_block(L, Body), R);
 drive0(Env0, {'fun',_,{clauses,[{clause,_,[{var,_,'_'}],[],Body0}]}},
-      [#call_ctxt{line=L,args=[Rhs]}|R]) ->
+       [#call_ctxt{line=L,args=[Rhs]}|R]) ->
     %% Let that ignores the result from Rhs.
     ?DEBUG("R7 ignore~n",[]),
     drive(Env0, scp_expr:list_to_block(L, [Rhs|Body0]), R);
@@ -276,7 +276,7 @@ build(Env0, Expr, [#call_ctxt{line=Line, args=Args0}|R]) -> %R17
 
 build(Env0, Expr, Ctxt=[#case_ctxt{line=Line, clauses=Cs0}|R]) -> %R18/R19
     build_case(Env0, Expr, Ctxt);
-    %%build_case_simp(Env0, Expr, Ctxt);
+%%build_case_simp(Env0, Expr, Ctxt);
 build(Env0, Expr, [#op1_ctxt{line=Line, op=Op}|R]) ->
     ?DEBUG("R15/16 op1~n",[]),
     build(Env0, {op,Line,Op,Expr}, R);
