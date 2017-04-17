@@ -1,4 +1,9 @@
-﻿-*- coding: utf-8-with-signature; mode: outline -*-
+﻿# erlscp [![TravisCI build status](https://travis-ci.org/fenollp/erlscp.svg?branch=master)](https://travis-ci.org/fenollp/erlscp/builds)
+
+A supercompiler pass for Erlang. Brought back from the ashes by pierrefenoll@gmail.com.
+
+
+-*- coding: utf-8-with-signature; mode: outline -*-
 
 Copyright (C) 2013 Göran Weinholt <goran@weinholt.se>
 
