@@ -86,6 +86,7 @@ is_simple({integer,_,_}) -> true;
 is_simple({float,_,_}) -> true;
 is_simple({atom,_,_}) -> true;
 is_simple({string,_,_}) -> true;
+is_simple({bin,_,_}) -> true;
 is_simple({char,_,_}) -> true;
 is_simple({nil,_}) -> true;
 is_simple({'fun',_,_}) -> true;
@@ -512,6 +513,7 @@ find_var_subst(B, [{{integer,_,V},{integer,_,V}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{float,_,V},{float,_,V}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{atom,_,V},{atom,_,V}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{string,_,V},{string,_,V}}|T]) -> find_var_subst(B, T);
+find_var_subst(B, [{{binary,_,V},{binary,_,V}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{char,_,V},{char,_,V}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{nil,_},{nil,_}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{'fun',_,{function,F,A}},{'fun',_,{function,F,A}}}|T])  ->
@@ -643,12 +645,25 @@ find_var_subst(B, [{E1,E2}|T]) ->
         true ->
             %% XXX: Fill in all supported expression types here. This
             %% is here because the function is not completed yet.
-            true = lists:member(T1,
-                                [integer,float,atom,string,char,nil,
-                                 variable,underscore,application,case_expr,
-                                 list,infix_expr,prefix_expr,tuple,
-                                 implicit_fun,if_expr,fun_expr
-                                ]),
+            true = lists:member(T1, [application
+                                    ,atom
+                                    ,binary
+                                    ,case_expr
+                                    ,char
+                                    ,float
+                                    ,fun_expr
+                                    ,if_expr
+                                    ,implicit_fun
+                                    ,infix_expr
+                                    ,integer
+                                    ,list
+                                    ,nil
+                                    ,prefix_expr
+                                    ,string
+                                    ,tuple
+                                    ,underscore
+                                    ,variable
+                                    ]),
             false;
         _ ->
             %% Different types. There can't possibly be a renaming.
