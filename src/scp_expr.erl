@@ -66,7 +66,7 @@ make_block(L0, E1, E2) ->
         true -> E2;
         false ->
             E1n = case E1 of
-                      {'block',_,[E1a,E1b]} ->
+                      {block,_,[E1a,E1b]} ->
                           case is_simple(E1b) of
                               true -> E1a;
                               _ -> E1
@@ -74,12 +74,13 @@ make_block(L0, E1, E2) ->
                       _ -> E1
                   end,
             case E2 of
-                {'block',L1,[E3,E4]} ->
-                    {'block',L1,[{'block',L0,[E1n,E3]},E4]};
+                {block,L1,[E3,E4]} ->
+                    {block,L1,[{block,L0,[E1n,E3]},E4]};
                 _ ->
-                    {'block',L0,[E1n,E2]}
+                    {block,L0,[E1n,E2]}
             end
     end.
+
 is_simple({var,_,_}) -> true;
 is_simple({integer,_,_}) -> true;
 is_simple({float,_,_}) -> true;
@@ -89,7 +90,8 @@ is_simple({char,_,_}) -> true;
 is_simple({nil,_}) -> true;
 is_simple({'fun',_,_}) -> true;
 is_simple(_) -> false.
-result_exp({'block',_,_E0,E1}) -> E1;
+
+result_exp({block,_,_E0,E1}) -> E1;
 result_exp(E) -> E.
 
 %% Construct a case expression. R5 is simplified by not having to
@@ -119,13 +121,13 @@ make_call(Line, {constructor,_,tuple}, As) ->
     {tuple,Line,As};
 make_call(Line, {'fun',Lf,{function,F,A}}, As) when A == length(As) ->
     make_call(Line, {atom,Lf,F}, As);
-make_call(Line, {'atom',_,element}, [{integer,_,I},{tuple,_,Es}])
+make_call(Line, {atom,_,element}, [{integer,_,I},{tuple,_,Es}])
   when I > 0, I =< length(Es) ->
     %% Need to residualize the rest of Es for effect.
     Rest = lists:sublist(Es, 1, I - 1) ++
         lists:sublist(Es, I + 1, length(Es)),
     list_to_block(Line, Rest ++ [lists:nth(I, Es)]);
-make_call(Line, {'atom',_,hd}, [{cons,_,H,T}]) ->
+make_call(Line, {atom,_,hd}, [{cons,_,H,T}]) ->
     %% Residualize T for effect.
     make_block(Line, T, H);
 make_call(Line,Expr,Args) ->
@@ -439,7 +441,7 @@ make_letrec(Line, [{Name,Arity,Fun}], Body) ->
     Bs0 = [{tuple,2,[{atom,3,Name},{integer,4,Arity},Fun]}],
     Arg = {cons,5,{tuple,6,Bs0},
            {tuple,7,Body}},
-    {'call',Line,Fakefun,[Arg]}.
+    {call,Line,Fakefun,[Arg]}.
 
 extract_letrecs(E) -> extract_letrecs(E,[]).
 extract_letrecs(E0,Ls) ->
@@ -903,7 +905,7 @@ ac5_test() ->
     E0 = {'fun',47,
           {clauses,
            [{clause,47,[],[],
-             [{call,48,{atom,48,'foo'},
+             [{call,48,{atom,48,foo},
                [{match,48,{var,48,'X'},{integer,48,1}},
                 {match,48,{var,48,'X'},{integer,48,1}}]}]}]}},
     check_ac(E0).
@@ -920,7 +922,7 @@ ac6_test() ->
     check_ac(E0).
 
 ac7_test() ->
-    E0 = {'block',66,
+    E0 = {block,66,
           [{'case',66,
             {var,66,'X'},
             [{clause,67,

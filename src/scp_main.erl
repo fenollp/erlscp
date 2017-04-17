@@ -91,7 +91,7 @@ drive0(Env0, E1, Ctxt=[#op1_ctxt{line=L, op=Op}|R])
         _ -> build(Env0, E1, Ctxt)
     end;
 
-%% drive(Env0, E={'atom',L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
+%% drive(Env0, E={atom,L0,G}, R=[#call_ctxt{args=Args}|_]) -> %R3
 %%     %% This is a function call to a local function or a BIF.
 %%     Arity = length(Args),
 %%     case lookup_function(Env0, {G, Arity}) of
@@ -100,7 +100,7 @@ drive0(Env0, E1, Ctxt=[#op1_ctxt{line=L, op=Op}|R])
 %%     end;
 %% drive(Env0, E={'fun',Lf,{function,G,Arity}}, R=[#call_ctxt{args=Args}|_])
 %%   when length(Args) == Arity ->                 %R3 alternative syntax
-%%     drive(Env0, {'atom',Lf,G}, R);
+%%     drive(Env0, {atom,Lf,G}, R);
 drive0(Env0, E={'fun',Lf,{function,G,Arity}}, R) -> %R3
     ?DEBUG("R3~n",[]),
     case lookup_function(Env0, {G, Arity}) of
@@ -194,7 +194,7 @@ drive0(Env0, {'fun',Line,{clauses,Cs0}}, R) ->   %R6
     {Env,Cs} = drive_clauses(Env0, Cs0),
     build(Env, {'fun',Line,{clauses,Cs}}, R);
 
-drive0(Env0, E={'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, R) ->
+drive0(Env0, E={call,Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, R) ->
     ?DEBUG("R9rec~n",[]),
     %% Letrec.
     io:fwrite("driving letrec: ~p~n",[E]),
@@ -207,17 +207,17 @@ drive0(Env0, E={'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, R) ->
     {Env, Expr} = drive(Env1, scp_expr:list_to_block(Line, Body), R),
     {Env#env{local=Env0#env.local},Expr};
 
-drive0(Env0, E={'block',Lb,[{'match',Lm,P0,E0},Rest]}, R) ->
+drive0(Env0, E={block,Lb,[{match,Lm,P0,E0},Rest]}, R) ->
     ?DEBUG("R match/block~n",[]),
     drive(Env0, scp_expr:make_case(Lb, E0, [{clause,Lm,[P0],[],[Rest]}]), R);
-drive0(Env0, {'block',Line,[A0,B0]}, R) ->
+drive0(Env0, {block,Line,[A0,B0]}, R) ->
     %% TODO: have the driving of case, match, etc save up a list of
     %% variables that will become bound in B.
     ?DEBUG("R block~n",[]),
     {Env1, A} = drive(Env0, A0, []),
     {Env, B} = drive(Env1, B0, R),
     {Env, scp_expr:make_block(Line, A, B)};
-drive0(Env0, {'block',Line,Es}, R) ->
+drive0(Env0, {block,Line,Es}, R) ->
     drive(Env0, scp_expr:list_to_block(Line, Es), R);
 
 %% Focusing rules.
@@ -233,10 +233,10 @@ drive0(Env0, {op,L,Op,E}, R) ->                  %R11
     ?DEBUG("R11~n",[]),
     drive(Env0, E, [#op1_ctxt{line=L, op=Op}|R]);
 
-drive0(Env0, {'call',L,X={atom,La,N},Args}, R) ->            %R12
+drive0(Env0, {call,L,X={atom,La,N},Args}, R) ->  %R12
     ?DEBUG("R12: ~p~n~n",[X]),
     drive(Env0, {'fun',La,{function,N,length(Args)}}, [#call_ctxt{line=L, args=Args}|R]);
-drive0(Env0, {'call',L,F,Args}, R) ->            %R12
+drive0(Env0, {call,L,F,Args}, R) ->            %R12
     ?DEBUG("R12: ~p~n~n",[F]),
     drive(Env0, F, [#call_ctxt{line=L, args=Args}|R]);
 drive0(Env0, {cons,L,H,T}, R) ->                 %R12 for cons
@@ -246,7 +246,7 @@ drive0(Env0, {tuple,L,Es}, R) ->                 %R12 for tuple
     ?DEBUG("R12tuple~n",[]),
     drive(Env0, {constructor,L,tuple}, [#call_ctxt{line=L, args=Es}|R]);
 
-drive0(Env0, {'match',L,P,E}, R) ->
+drive0(Env0, {match,L,P,E}, R) ->
     %% XXX: pushes match into case clauses etc
     ?DEBUG("R match~n",[]),
     drive(Env0, E, [#match_ctxt{line=L,pattern=P}|R]);
@@ -296,7 +296,7 @@ build_case(Env0, Expr={var,_,Name}, [#case_ctxt{line=Line, clauses=Cs0}|R]) -> %
     ?DEBUG("R18~n",[]),
     CRs = lists:map(fun (C0={clause,Lc,[P],G0,B0}) when
                               ?IS_CONST_EXPR(P);
-                              element(1,P)=='var', element(3,P) =/= '_' ->
+                              element(1,P)==var, element(3,P) =/= '_' ->
                             %% TODO: investigate if this rule should
                             %% be more powerful
                             S = dict:from_list([{Name,P}]),
@@ -402,9 +402,9 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
             ?DEBUG("Folding. Fname=~p, FV=~p~n",[Fname,FV]),
             case FV of
                 [] ->
-                    Expr={'atom',Line,Fname};
+                    Expr={atom,Line,Fname};
                 _ ->
-                    Expr={'call',Line,{atom,Line,Fname},[{var,Line,X} || X <- FV]}
+                    Expr={call,Line,{atom,Line,Fname},[{var,Line,X} || X <- FV]}
             end,
             {Env0#env{found=[Fname|Env0#env.found]},Expr};
         _ ->
@@ -475,7 +475,7 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
                                             NewFun0 = {'fun',Line,
                                                        {clauses,
                                                         [{clause,Line,Head,Guard,[Body]}]}},
-                                            NewTerm = {'call',Line,{atom,Line,Fname},
+                                            NewTerm = {call,Line,{atom,Line,Fname},
                                                        [{var,Line,X} || X <- FV]}
                                     end,
                                     ?DEBUG("NewFun0: ~p~n",[NewFun0]),

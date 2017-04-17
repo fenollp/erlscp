@@ -173,14 +173,14 @@ split(Env0,{cons,L,H,T}) ->
     %% Extract both operands.
     {Env1,[X0,X1],S} = gensyms(Env0, L, "Tmp", [H,T]),
     {Env1,{cons,L,X0,X1},S};
-split(Env0,{'tuple',L,Es}) ->
+split(Env0,{tuple,L,Es}) ->
     %% Extract the expressions.
     {Env1,Xs,S} = gensyms(Env0, L, "Tmp", Es),
-    {Env1,{'tuple',L,Xs},S};
-split(Env0,{'block',L,Es}) ->
+    {Env1,{tuple,L,Xs},S};
+split(Env0,{block,L,Es}) ->
     %% Extract the expressions.
     {Env1,Xs,S} = gensyms(Env0, L, "Tmp", Es),
-    {Env1,{'block',L,Xs},S};
+    {Env1,{block,L,Xs},S};
 split(Env0,{'fun',L,{clauses,Cs0}}) ->
     %% Extract all bodies.
     {Env1,Cs,S} = split_clauses(Env0, L, Cs0),
@@ -199,8 +199,8 @@ split(Env0,{'case',L,E0,Cs0}) ->
     {Env1,[X],S} = gensyms(Env0, L, "Tmp", [E0]),
     {Env1,{'case',L,X,Cs0},S};
 split(Env,E={T,_,_})
-  when T == 'var'; T == 'integer'; T == 'float'; T == 'atom';
-       T == 'string'; T == 'char' ->
+  when T == var; T == integer; T == float; T == atom;
+       T == string; T == char ->
     %% No splitting is possible. Will probably not be needed, but it's
     %% here for completeness.
     {Env,E,dict:new()};
