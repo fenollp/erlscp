@@ -1,6 +1,6 @@
 %% -*- coding: utf-8; mode: erlang -*-
 
-%% Copyright (C) 2012-2013 Göran Weinholt <goran@weinholt.se>
+%% Copyright (C) 2012-2013, 2017 Göran Weinholt <goran@weinholt.se>
 
 %% Permission is hereby granted, free of charge, to any person obtaining a
 %% copy of this software and associated documentation files (the "Software"),
@@ -37,6 +37,7 @@
          terminates/2, is_linear/2, is_strict/2,
          apply_op/4, apply_op/3]).
 -include("scp.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 read(S) ->
     %% Too useful to not have around...
@@ -319,11 +320,9 @@ ac(Env0,S0,{match,L,P0,E0}) ->
     {Env,S,E} = ac(Env3,S2,E0),
     {Env,S,{match,L,P,E}};
 
-ac(Env0,S0,{block,L,[A0,B0]}) ->
-    %% Variables defined in A are bound in B.
-    {Env1,S1,A} = ac(Env0,S0,A0),
-    {Env,S,B} = ac(Env1,S1,B0),
-    {Env,S,{block,L,[A,B]}};
+ac(Env0,S0,{block,L,Es0}) ->
+    {Env,S,Es} = ac_list(Env0,S0,Es0),
+    {Env,S,{block,L,Es}};
 
 ac(Env, S, Expr) ->
     io:format("~s:ac/3 Env ~p\n", [?MODULE, Env]),
@@ -430,7 +429,7 @@ ac_icr_clauses(Env0,S0,[],ExprType) ->
 %% function calls.
 
 make_letrec(Line, [{Name,Arity,Fun}], Body) ->
-    Fakefun = {'fun',1,{function,scp_expr,letrec,1}},
+    Fakefun = {'fun',1,{function,{atom,1,scp_expr},{atom,1,letrec},{integer,1,1}}},
     Bs0 = [{tuple,2,[{atom,3,Name},{integer,4,Arity},Fun]}],
     Arg = {cons,5,{tuple,6,Bs0},
            {tuple,7,Body}},
@@ -441,7 +440,7 @@ extract_letrecs(E0,Ls) ->
     {E1,Ls0} = extrecs_1(E0,Ls),
     E = erl_syntax:revert(E1),
     {E,Ls0}.
-extrecs_1(E={'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}, Ls0) ->
+extrecs_1(E={'call',Line,{'fun',1,{function,{atom,_,scp_expr},{atom,_,letrec},{integer,1,1}}},[Arg]}, Ls0) ->
     {Bs1,Body0} = letrec_destruct(E),
     %% Extract letrecs from the funs
     {Bs,Ls1} = lists:mapfoldl(fun ({Name,Arity,Fun0},Ls00) ->
@@ -457,7 +456,7 @@ extrecs_1(E,Ls) ->
     erl_syntax_lib:mapfold_subtrees(fun extrecs_1/2, Ls, E).
 
 %% Returns the bindings and the body a letrec.
-letrec_destruct({'call',Line,{'fun',1,{function,scp_expr,letrec,1}},[Arg]}) ->
+letrec_destruct({'call',Line,{'fun',1,{function,{atom,_,scp_expr},{atom,_,letrec},{integer,1,1}}},[Arg]}) ->
     {cons,_,{tuple,_,Bs0},{tuple,_,Body}} = Arg,
     %% Bs1 = [{Name,Arity,Fun} || {tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]} <- Bs0],
     Bs1 = lists:map(fun ({tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]}) ->
@@ -973,6 +972,17 @@ ac11_test() ->
            {op,1,'==',{var,1,Ynew},{integer,1,1}}]],
          [{op,1,'+',{var,1,'X'},{var,1,Ynew}}]}]},
       {op,1,'+',{var,1,'X'},{var,1,Ynew}}]} = E1.
+
+ac12_test() ->
+    %% Under some conditions the Rhs of a match is a block with a
+    %% single expression.
+    E0 = {match,1,
+          {integer,1,1},
+          {block,1,
+           [{call,1,
+             {'fun',1,{clauses,[{clause,1,[{var,1,'X'}],[],[{var,1,'X'}]}]}},
+             [{integer,1,42}]}]}},
+    check_ac(E0).
 
 vars_test() ->
     E0 = {op,48,'+',
