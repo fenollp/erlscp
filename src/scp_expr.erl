@@ -438,7 +438,7 @@ ac_icr_clauses(Env0,S0,[],ExprType) ->
 %% function calls.
 
 make_letrec(Line, [{Name,Arity,Fun}], Body) ->
-    Fakefun = {'fun',1,{function,{atom,1,scp_expr},{atom,1,letrec},{integer,1,1}}},
+    Fakefun = {'fun',1,{function,{atom,1,?MODULE},{atom,1,letrec},{integer,1,1}}},
     Bs0 = [{tuple,2,[{atom,3,Name},{integer,4,Arity},Fun]}],
     Arg = {cons,5,{tuple,6,Bs0},
            {tuple,7,Body}},
@@ -449,7 +449,7 @@ extract_letrecs(E0,Ls) ->
     {E1,Ls0} = extrecs_1(E0,Ls),
     E = erl_syntax:revert(E1),
     {E,Ls0}.
-extrecs_1(E={'call',Line,{'fun',1,{function,{atom,_,scp_expr},{atom,_,letrec},{integer,1,1}}},[Arg]}, Ls0) ->
+extrecs_1(E={'call',Line,{'fun',1,{function,{atom,_,?MODULE},{atom,_,letrec},{integer,1,1}}},[Arg]}, Ls0) ->
     {Bs1,Body0} = letrec_destruct(E),
     %% Extract letrecs from the funs
     {Bs,Ls1} = lists:mapfoldl(fun ({Name,Arity,Fun0},Ls00) ->
@@ -465,7 +465,7 @@ extrecs_1(E,Ls) ->
     erl_syntax_lib:mapfold_subtrees(fun extrecs_1/2, Ls, E).
 
 %% Returns the bindings and the body a letrec.
-letrec_destruct({'call',Line,{'fun',1,{function,{atom,_,scp_expr},{atom,_,letrec},{integer,1,1}}},[Arg]}) ->
+letrec_destruct({'call',Line,{'fun',1,{function,{atom,_,?MODULE},{atom,_,letrec},{integer,1,1}}},[Arg]}) ->
     {cons,_,{tuple,_,Bs0},{tuple,_,Body}} = Arg,
     %% Bs1 = [{Name,Arity,Fun} || {tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]} <- Bs0],
     Bs1 = lists:map(fun ({tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]}) ->
