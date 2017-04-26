@@ -27,7 +27,6 @@
          find_constructor_clause/3,
          partition/3,
          find_matching_const/2,
-         simplify/3,
          simplify_guard_seq/1,
          guard_seq_eval/1]).
 

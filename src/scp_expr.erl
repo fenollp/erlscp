@@ -23,13 +23,11 @@
 %% Miscellaneous tools for working with Erlang expressions.
 
 -module(scp_expr).
--export([read/1,
-         list_to_block/2, make_block/3, result_exp/1,
+-export([list_to_block/2, make_block/3, result_exp/1,
          make_case/3, make_if/2, make_call/3, make_let/4,
          function_to_fun/1, fun_to_function/3,
          delete_duplicates/1,
          variables/1, free_variables/2, subst/2,
-         matches/1,
          fresh_variables/3, gensym/2, gensym_name/1,
          alpha_convert/2,
          make_letrec/3, extract_letrecs/1, letrec_destruct/1,
@@ -40,13 +38,16 @@
 -include("scp.hrl").
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
--endif.
+
+-export([read/1]).
 
 read(S) ->
     %% Too useful to not have around...
     {ok, Tokens, _} = erl_scan:string("x()->"++S++"."),
     {ok, {function,_,_,_,[{clause,L,[],[],B}]}} = erl_parse:parse_form(Tokens),
     list_to_block(L,B).
+-endif.
+
 
 %% Convert a list of expressions (such as in a function body) into
 %% nested blocks.
@@ -165,6 +166,7 @@ variables0(Expr) ->
                       erl_syntax:subtrees(Expr))
     end.
 
+-ifdef(UNUSED_LOCAL_FUNCTION).
 %% The matches contained in the expression.
 matches(Expr) -> lists:flatten(matches0(Expr)).
 matches0(Expr) ->
@@ -175,6 +177,7 @@ matches0(Expr) ->
             lists:map(fun (Es) -> lists:map(fun matches0/1, Es) end,
                       erl_syntax:subtrees(Expr))
     end.
+-endif.
 
 %% Generate a fresh variable.
 gensym(Env0, Prefix) ->
