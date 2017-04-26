@@ -515,6 +515,7 @@ reconcile_guard(Rhs, N, {clause,L,[P0],G0,B}, P) ->
             false
     end.
 
+-ifdef(TEST).
 %% Find paths to all elements in an expression.
 paths({cons,_,H,T}) ->
     [[1],[2]] ++
@@ -524,6 +525,7 @@ paths({cons,_,H,T}) ->
 %%     ;
 paths(_) ->
     [].
+-endif.
 
 %% Walk a path over an expression, if possible.
 path_ref([], X) -> {ok,X};
@@ -554,6 +556,7 @@ path_elim([], _) ->
     {nil,1}.
 
 %% EUnit tests.
+-ifdef(TEST).
 
 pv_test() ->
     %% XXX: sort...
@@ -609,3 +612,5 @@ reconcile_test() ->
     C0 = {clause,1,[P],[],[{nil,1}]},
     {C,nothing} = reconcile(sets:new(), [1], {var,1,'X'}, C0),
     ?DEBUG("C: ~p~n",[C]).
+
+-endif.

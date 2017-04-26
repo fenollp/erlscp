@@ -811,7 +811,7 @@ apply_op(_,_,_) ->
     false.
 
 %% EUnit tests.
-
+-ifdef(TEST).
 
 fv0_test() ->
     ['Y'] = free_variables({match,1,{var,1,'X'},{var,1,'Y'}}).
@@ -1123,3 +1123,5 @@ linear1_test() ->
 
 linear2_test() ->
     false = is_linear('X', read("Y=X+X, Y")).
+
+-endif.

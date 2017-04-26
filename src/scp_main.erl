@@ -494,6 +494,7 @@ drive_call(Env0, Funterm, Line, Name, Arity, Fun0, R) ->
             end
     end.
 
+-ifdef(UNUSED_LOCAL_FUNCTION).
 %% Simplifications on case expressions.
 build_case_simp(Env0, E0, Ctxt=[CR=#case_ctxt{clauses=Cs0, line=Line}|R]) ->
     case scp_pattern:simplify(Env0#env.bound, E0, Cs0) of
@@ -582,6 +583,7 @@ rebuild_clauses(Env, Rhs, [{C0,Lhs}|SCs]) ->
     end;
 rebuild_clauses(_, _, []) ->
     [].
+-endif.
 
 %% Plug an expression into a context.
 plug(Expr, [#call_ctxt{line=Line, args=Args}|R]) ->
@@ -660,6 +662,7 @@ generalize(Env0, E1, E2) ->
     {Env, Expr}.
 
 %% EUnit tests.
+-ifdef(TEST).
 
 build_test() ->
     {_,{integer,0,123}} = drive(#env{}, {integer,0,123}, []),
@@ -673,3 +676,5 @@ residualize_test() ->
     {Env,E} = drive(#env{}, E0, []),
     io:fwrite("E=~p~n",[E]),
     ['U'] = scp_expr:variables(E).
+
+-endif.

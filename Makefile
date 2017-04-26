@@ -1,5 +1,5 @@
 all:
-	rebar3 do compile,eunit,xref
+	rebar3 do compile,xref,eunit
 
 clean:
 	$(if $(wildcard ebin/*.beam), rm ebin/*.beam)

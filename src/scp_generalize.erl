@@ -283,6 +283,7 @@ msg_default(Env0, Infvs, E1,E2) ->
     {Env1,NewExpr,[{G,Rhs}]}.
 
 %% EUnit tests
+-ifdef(TEST).
 
 gensyms_test() ->
     Env0 = #env{},
@@ -340,3 +341,5 @@ whistle_test() ->
                     scp_expr:read("x:y2(y,x)")),
     false = whistle(scp_expr:read("a(A)"),
                     scp_expr:read("b(A)")).
+
+-endif.
