@@ -25,10 +25,7 @@ before_script:
 
 script:
   - set -e
-  # - make
-  - rebar3 compile
-  - rebar3 xref
-  # - rebar3 eunit
+  - make
   - make S
   - make test_deforestation0
   - make test_deforestation1

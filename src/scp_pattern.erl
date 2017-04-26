@@ -27,11 +27,13 @@
          find_constructor_clause/3,
          partition/3,
          find_matching_const/2,
-         simplify/3,
          simplify_guard_seq/1,
          guard_seq_eval/1]).
 
 -include("scp.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% List the variables used in a pattern.
 pattern_variables(Expr) ->
@@ -512,6 +514,7 @@ reconcile_guard(Rhs, N, {clause,L,[P0],G0,B}, P) ->
             false
     end.
 
+-ifdef(TEST).
 %% Find paths to all elements in an expression.
 paths({cons,_,H,T}) ->
     [[1],[2]] ++
@@ -521,6 +524,7 @@ paths({cons,_,H,T}) ->
 %%     ;
 paths(_) ->
     [].
+-endif.
 
 %% Walk a path over an expression, if possible.
 path_ref([], X) -> {ok,X};
@@ -551,6 +555,7 @@ path_elim([], _) ->
     {nil,1}.
 
 %% EUnit tests.
+-ifdef(TEST).
 
 pv_test() ->
     %% XXX: sort...
@@ -606,3 +611,5 @@ reconcile_test() ->
     C0 = {clause,1,[P],[],[{nil,1}]},
     {C,nothing} = reconcile(sets:new(), [1], {var,1,'X'}, C0),
     ?DEBUG("C: ~p~n",[C]).
+
+-endif.

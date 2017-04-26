@@ -22,6 +22,8 @@
 
 -module(erlang_supercompiler).
 -export([parse_transform/2]).
+-ignore_xref([parse_transform/2]).
+
 -include("scp.hrl").
 
 stdfuns() ->

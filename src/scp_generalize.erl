@@ -27,7 +27,11 @@
          whistle/2,
          split/2,
          msg/3]).
+
 -include("scp.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% Find old expressions that are homeomorphically embedded in Expr.
 find_homeomorphic_embeddings(Env, Expr) ->
@@ -279,6 +283,7 @@ msg_default(Env0, Infvs, E1,E2) ->
     {Env1,NewExpr,[{G,Rhs}]}.
 
 %% EUnit tests
+-ifdef(TEST).
 
 gensyms_test() ->
     Env0 = #env{},
@@ -336,3 +341,5 @@ whistle_test() ->
                     scp_expr:read("x:y2(y,x)")),
     false = whistle(scp_expr:read("a(A)"),
                     scp_expr:read("b(A)")).
+
+-endif.
