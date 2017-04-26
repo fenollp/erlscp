@@ -124,7 +124,7 @@ get_stdfuns(Env0) ->
     {Libnames0,Stdforms0} = lists:unzip(Fs),
     Libnames = dict:from_list(Libnames0),
     Stdforms = [atom_subst(Libnames, E) || E <- Stdforms0],
-    {Libnames, [{attribute,0,file,{"erlang_supercompiler.erl",0}}|Stdforms]}.
+    {Libnames, [{attribute,0,file,{atom_to_list(?MODULE)++".erl",0}}|Stdforms]}.
 
 parse(Str) ->
     {ok, Tokens, _} = erl_scan:string(Str),

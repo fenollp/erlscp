@@ -66,7 +66,7 @@ make_block(L0, E1, E2) ->
         true -> E2;
         false ->
             E1n = case E1 of
-                      {'block',_,[E1a,E1b]} ->
+                      {block,_,[E1a,E1b]} ->
                           case is_simple(E1b) of
                               true -> E1a;
                               _ -> E1
@@ -74,22 +74,25 @@ make_block(L0, E1, E2) ->
                       _ -> E1
                   end,
             case E2 of
-                {'block',L1,[E3,E4]} ->
-                    {'block',L1,[{'block',L0,[E1n,E3]},E4]};
+                {block,L1,[E3,E4]} ->
+                    {block,L1,[{block,L0,[E1n,E3]},E4]};
                 _ ->
-                    {'block',L0,[E1n,E2]}
+                    {block,L0,[E1n,E2]}
             end
     end.
+
 is_simple({var,_,_}) -> true;
 is_simple({integer,_,_}) -> true;
 is_simple({float,_,_}) -> true;
 is_simple({atom,_,_}) -> true;
 is_simple({string,_,_}) -> true;
+is_simple({bin,_,_}) -> true;
 is_simple({char,_,_}) -> true;
 is_simple({nil,_}) -> true;
 is_simple({'fun',_,_}) -> true;
 is_simple(_) -> false.
-result_exp({'block',_,_E0,E1}) -> E1;
+
+result_exp({block,_,_E0,E1}) -> E1;
 result_exp(E) -> E.
 
 %% Construct a case expression. R5 is simplified by not having to
@@ -119,13 +122,13 @@ make_call(Line, {constructor,_,tuple}, As) ->
     {tuple,Line,As};
 make_call(Line, {'fun',Lf,{function,F,A}}, As) when A == length(As) ->
     make_call(Line, {atom,Lf,F}, As);
-make_call(Line, {'atom',_,element}, [{integer,_,I},{tuple,_,Es}])
+make_call(Line, {atom,_,element}, [{integer,_,I},{tuple,_,Es}])
   when I > 0, I =< length(Es) ->
     %% Need to residualize the rest of Es for effect.
     Rest = lists:sublist(Es, 1, I - 1) ++
         lists:sublist(Es, I + 1, length(Es)),
     list_to_block(Line, Rest ++ [lists:nth(I, Es)]);
-make_call(Line, {'atom',_,hd}, [{cons,_,H,T}]) ->
+make_call(Line, {atom,_,hd}, [{cons,_,H,T}]) ->
     %% Residualize T for effect.
     make_block(Line, T, H);
 make_call(Line,Expr,Args) ->
@@ -435,18 +438,18 @@ ac_icr_clauses(Env0,S0,[],ExprType) ->
 %% function calls.
 
 make_letrec(Line, [{Name,Arity,Fun}], Body) ->
-    Fakefun = {'fun',1,{function,{atom,1,scp_expr},{atom,1,letrec},{integer,1,1}}},
+    Fakefun = {'fun',1,{function,{atom,1,?MODULE},{atom,1,letrec},{integer,1,1}}},
     Bs0 = [{tuple,2,[{atom,3,Name},{integer,4,Arity},Fun]}],
     Arg = {cons,5,{tuple,6,Bs0},
            {tuple,7,Body}},
-    {'call',Line,Fakefun,[Arg]}.
+    {call,Line,Fakefun,[Arg]}.
 
 extract_letrecs(E) -> extract_letrecs(E,[]).
 extract_letrecs(E0,Ls) ->
     {E1,Ls0} = extrecs_1(E0,Ls),
     E = erl_syntax:revert(E1),
     {E,Ls0}.
-extrecs_1(E={'call',Line,{'fun',1,{function,{atom,_,scp_expr},{atom,_,letrec},{integer,1,1}}},[Arg]}, Ls0) ->
+extrecs_1(E={'call',Line,{'fun',1,{function,{atom,_,?MODULE},{atom,_,letrec},{integer,1,1}}},[Arg]}, Ls0) ->
     {Bs1,Body0} = letrec_destruct(E),
     %% Extract letrecs from the funs
     {Bs,Ls1} = lists:mapfoldl(fun ({Name,Arity,Fun0},Ls00) ->
@@ -462,7 +465,7 @@ extrecs_1(E,Ls) ->
     erl_syntax_lib:mapfold_subtrees(fun extrecs_1/2, Ls, E).
 
 %% Returns the bindings and the body a letrec.
-letrec_destruct({'call',Line,{'fun',1,{function,{atom,_,scp_expr},{atom,_,letrec},{integer,1,1}}},[Arg]}) ->
+letrec_destruct({'call',Line,{'fun',1,{function,{atom,_,?MODULE},{atom,_,letrec},{integer,1,1}}},[Arg]}) ->
     {cons,_,{tuple,_,Bs0},{tuple,_,Body}} = Arg,
     %% Bs1 = [{Name,Arity,Fun} || {tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]} <- Bs0],
     Bs1 = lists:map(fun ({tuple,_,[{atom,_,Name},{integer,_,Arity},Fun]}) ->
@@ -510,6 +513,7 @@ find_var_subst(B, [{{integer,_,V},{integer,_,V}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{float,_,V},{float,_,V}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{atom,_,V},{atom,_,V}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{string,_,V},{string,_,V}}|T]) -> find_var_subst(B, T);
+find_var_subst(B, [{{binary,_,V},{binary,_,V}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{char,_,V},{char,_,V}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{nil,_},{nil,_}}|T]) -> find_var_subst(B, T);
 find_var_subst(B, [{{'fun',_,{function,F,A}},{'fun',_,{function,F,A}}}|T])  ->
@@ -641,12 +645,25 @@ find_var_subst(B, [{E1,E2}|T]) ->
         true ->
             %% XXX: Fill in all supported expression types here. This
             %% is here because the function is not completed yet.
-            true = lists:member(T1,
-                                [integer,float,atom,string,char,nil,
-                                 variable,underscore,application,case_expr,
-                                 list,infix_expr,prefix_expr,tuple,
-                                 implicit_fun,if_expr,fun_expr
-                                ]),
+            true = lists:member(T1, [application
+                                    ,atom
+                                    ,binary
+                                    ,case_expr
+                                    ,char
+                                    ,float
+                                    ,fun_expr
+                                    ,if_expr
+                                    ,implicit_fun
+                                    ,infix_expr
+                                    ,integer
+                                    ,list
+                                    ,nil
+                                    ,prefix_expr
+                                    ,string
+                                    ,tuple
+                                    ,underscore
+                                    ,variable
+                                    ]),
             false;
         _ ->
             %% Different types. There can't possibly be a renaming.
@@ -903,7 +920,7 @@ ac5_test() ->
     E0 = {'fun',47,
           {clauses,
            [{clause,47,[],[],
-             [{call,48,{atom,48,'foo'},
+             [{call,48,{atom,48,foo},
                [{match,48,{var,48,'X'},{integer,48,1}},
                 {match,48,{var,48,'X'},{integer,48,1}}]}]}]}},
     check_ac(E0).
@@ -920,7 +937,7 @@ ac6_test() ->
     check_ac(E0).
 
 ac7_test() ->
-    E0 = {'block',66,
+    E0 = {block,66,
           [{'case',66,
             {var,66,'X'},
             [{clause,67,

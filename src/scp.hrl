@@ -47,19 +47,20 @@
              }).
 
 -define(IS_CONST_TYPE(T),
-        T=='integer';
-            T=='float';
-            T=='atom';
-            T=='string';
-            T=='char';
-            T=='nil').
+        T==integer;
+            T==float;
+            T==atom;
+            T==string;
+            T==char;
+            T==nil
+       ).
 
 -define(IS_CONST_EXPR(E),
         ?IS_CONST_TYPE(element(1,E));
-            element(1,E)=='tuple', element(3,E)==[]).
+            element(1,E)==tuple, element(3,E)==[]).
 
 -ifdef(LOG).
--define(DEBUG(P,A), (io:fwrite(P,A))).
+-define(DEBUG(P,A), io:fwrite(P,A)).
 -else.
--define(DEBUG(P,A), (false)).
+-define(DEBUG(P,A), ok).
 -endif.
