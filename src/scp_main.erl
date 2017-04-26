@@ -26,6 +26,9 @@
 -export([drive/3]).
 
 -include("scp.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% Contexts.
 -record(op_ctxt, {line, op, e1=hole, e2=hole}). %op(e1, e2)

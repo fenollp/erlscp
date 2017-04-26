@@ -36,8 +36,11 @@
          find_renaming/2,
          terminates/2, is_linear/2, is_strict/2,
          apply_op/4, apply_op/3]).
+
 -include("scp.hrl").
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 read(S) ->
     %% Too useful to not have around...

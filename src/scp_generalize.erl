@@ -27,7 +27,11 @@
          whistle/2,
          split/2,
          msg/3]).
+
 -include("scp.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% Find old expressions that are homeomorphically embedded in Expr.
 find_homeomorphic_embeddings(Env, Expr) ->

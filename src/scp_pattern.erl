@@ -32,6 +32,9 @@
          guard_seq_eval/1]).
 
 -include("scp.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% List the variables used in a pattern.
 pattern_variables(Expr) ->
