@@ -40,6 +40,10 @@ script:
   - make test_unfold3
   # - make test_unfold4
   - make test_unfold5
+  - make test_try1
+  - make test_map1
+  - make test_map2
+  - make test_map3
   - git add -A -f ebin/*.S
   - git --no-pager diff
   - git --no-pager diff --cached
