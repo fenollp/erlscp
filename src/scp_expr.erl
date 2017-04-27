@@ -303,6 +303,16 @@ ac(Env0,S0,{record_field,L,R0,F0}) ->
     {Env,S,[R,F]} = ac_list(Env0,S0,[R0,F0]),
     {Env,S,{record_field,L,R,F}};
 
+ac(Env0, S0, E={map,L,Es0}) ->
+    {Env,S,Es} = ac_list(Env0, S0, Es0),
+    {Env, S, {map,L, Es}};
+ac(Env0, S0, E={map,L,M0,Fs0}) ->
+    {Env,S,[M|Fs]} = ac_list(Env0, S0, [M0|Fs0]),
+    {Env, S, {map,L, M, Fs}};
+ac(Env0, S0, {map_field_assoc,L, K0, V0}) ->
+    {Env,S,[K,V]} = ac_list(Env0, S0, [K0,V0]),
+    {Env, S, {map_field_assoc,L, K, V}};
+
 ac(Env0,S0,{remote,L,M0,F0}) ->
     {Env,S,[M,F]} = ac_list(Env0,S0,[M0,F0]),
     {Env,S,{remote,L,M,F}};
@@ -678,6 +688,9 @@ find_var_subst(B, [{E1,E2}|T]) ->
                                     ,integer
                                     ,list
                                     ,match_expr
+                                    ,map
+                                    ,map_expr
+                                    ,map_field_assoc
                                     ,nil
                                     ,prefix_expr
                                     ,string
@@ -771,9 +784,15 @@ lin(N, E) ->
             %% difficult to say statically if it's linear.
             Cs = erl_syntax:fun_expr_clauses(E),
             2 * lists:max(linlist(N, Cs));
-        T when T==list; T==tuple; T==infix_expr;
-               T==prefix_expr; T==block_expr;
-               T==module_qualifier ->
+        map_field_assoc ->
+            lists:sum(linlist(N, [erl_syntax:map_field_assoc_name(E), erl_syntax:map_field_assoc_value(E)]));
+        T when T =:= block_expr;
+               T =:= infix_expr;
+               T =:= list;
+               T =:= map_expr;
+               T =:= module_qualifier;
+               T =:= prefix_expr;
+               T =:= tuple ->
             lists:sum(linlist(N, lists:flatten(erl_syntax:subtrees(E))));
         T when ?IS_CONST_TYPE(T); T==implicit_fun;
                T==operator ->
@@ -818,9 +837,15 @@ is_strict(N, E) ->
         match_expr ->
             %% XXX: ignores the pattern
             is_strict(N, erl_syntax:match_expr_body(E));
-        T when T==list; T==tuple; T==infix_expr;
-               T==prefix_expr; T==block_expr;
-               T==module_qualifier ->
+        map_field_assoc ->
+            lists:any(F, [erl_syntax:map_field_assoc_name(E), erl_syntax:map_field_assoc_value(E)]);
+        T when T =:= block_expr;
+               T =:= infix_expr;
+               T =:= list;
+               T =:= map_expr;
+               T =:= module_qualifier;
+               T =:= prefix_expr;
+               T =:= tuple ->
             lists:any(F, lists:flatten(erl_syntax:subtrees(E)));
         T when ?IS_CONST_TYPE(T); T==implicit_fun; T==fun_expr;
                T==operator ->
