@@ -677,6 +677,7 @@ find_var_subst(B, [{E1,E2}|T]) ->
                                     ,infix_expr
                                     ,integer
                                     ,list
+                                    ,match_expr
                                     ,nil
                                     ,prefix_expr
                                     ,string
