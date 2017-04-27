@@ -4,7 +4,7 @@ all:
 clean:
 	$(if $(wildcard ebin/*.beam), rm ebin/*.beam)
 
-ASM = $(wildcard test/deforestation*.erl test/unfold*.erl)
+ASM = $(wildcard test/deforestation*.erl test/unfold*.erl test/try*.erl)
 
 PA = _build/default/lib/erlscp/ebin/
 ERLC = erlc -o ebin -pa $(PA) -pa ebin
