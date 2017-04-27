@@ -21,14 +21,14 @@ test.%: old
 	$(ERL) -eval 'R = $*:a(), R = $*:b().' -s init stop
 
 test: S $(patsubst test/%.erl,test_%,$(ASM))
-test_%: SUPERC = $(ERLC) +to_asm +'{parse_transform, erlang_supercompiler}'
+test_%: SUPERC = $(ERLC) +'{parse_transform, erlang_supercompiler}'
 test_%: $(OBJECTS)
-	$(SUPERC) test/$*.erl
+	$(SUPERC) +to_asm test/$*.erl
 	mv ebin/$*.S ebin/$*_.S
 	$(ERLC) +to_asm test/$*.erl
 	git add -A -f ebin/$*.S ebin/$*_.S
-	git --no-pager diff --cached
-	$(ERLC) test/$*.erl
+	git --no-pager diff --cached -- ebin
+	$(SUPERC) test/$*.erl
 	$(ERL) -eval 'R = $*:a(), R = $*:b().' -s init stop
 	bash -c '[[ 0 -eq $$(git status --porcelain ebin/$*.S ebin/$*_.S | wc -l) ]]'
 
