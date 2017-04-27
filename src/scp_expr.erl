@@ -317,6 +317,11 @@ ac(Env0,S0,{'fun',L,{function,M0,F0,A0}}) ->
     {Env,S,[M,F,A]} = ac_list(Env0,S0,[M0,F0,A0]),
     {Env,S,{'fun',L,{function,M,F,A}}};
 
+ac(Env0,S0,{'try',L, E0, Cs0, CsCatch0, CsAfter0}) ->
+    {Env1,S1,E} = ac(Env0, S0, E0),
+    {Env,S,Cs} = ac_icr_clauses(Env1, S1, Cs0, 'try'),
+    {Env,S,{'try',L, E, Cs, CsCatch0, CsAfter0}};
+
 ac(Env0,S0,{'case',L,E0,Cs0}) ->
     {Env1,S1,E} = ac(Env0, S0, E0),
     {Env,S,Cs} = ac_icr_clauses(Env1, S1, Cs0, 'case'),
