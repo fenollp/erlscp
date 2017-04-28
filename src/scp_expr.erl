@@ -298,7 +298,12 @@ ac(Env0,S0,{tuple,L,Es0}) ->
     {Env,S,Es} = ac_list(Env0,S0,Es0),
     {Env,S,{tuple,L,Es}};
 
-ac(Env,S,E={record,_,_,_}) -> {Env,S,E};
+ac(Env0, S0, {record,L,R,Fs0}) ->
+    {Env,S,Fs} = ac_list(Env0, S0, Fs0),
+    {Env, S, {record,L, R, Fs}};
+ac(Env0, S0, {record,L,V0,R,Fs0}) ->
+    {Env,S,[V|Fs]} = ac_list(Env0, S0, [V0|Fs0]),
+    {Env, S, {record,L, V, R, Fs}};
 ac(Env0,S0,{record_field,L,R0,F0}) ->
     {Env,S,[R,F]} = ac_list(Env0,S0,[R0,F0]),
     {Env,S,{record_field,L,R,F}};
@@ -697,6 +702,7 @@ find_var_subst(B, [{E1,E2}|T]) ->
                                     ,map_field_assoc
                                     ,nil
                                     ,prefix_expr
+                                    ,record_expr
                                     ,string
                                     ,tuple
                                     ,underscore
@@ -796,6 +802,7 @@ lin(N, E) ->
                T =:= map_expr;
                T =:= module_qualifier;
                T =:= prefix_expr;
+               T =:= record_expr;
                T =:= tuple ->
             lists:sum(linlist(N, lists:flatten(erl_syntax:subtrees(E))));
         T when ?IS_CONST_TYPE(T); T==implicit_fun;
@@ -849,6 +856,7 @@ is_strict(N, E) ->
                T =:= map_expr;
                T =:= module_qualifier;
                T =:= prefix_expr;
+               T =:= record_expr;
                T =:= tuple ->
             lists:any(F, lists:flatten(erl_syntax:subtrees(E)));
         T when ?IS_CONST_TYPE(T); T==implicit_fun; T==fun_expr;
