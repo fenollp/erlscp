@@ -42,6 +42,7 @@ script:
   - make test_unfold5
   - make test_try1
   - make test_try2
+  - make test_try3
   - make test_map1
   - make test_map2
   - make test_map3

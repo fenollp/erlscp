@@ -332,6 +332,10 @@ ac(Env0,S0,{'try',L, E0, Cs0, CsCatch0, CsAfter0}) -> %%FIXME: ac these last 2 c
     {Env,S,Cs} = ac_icr_clauses(Env1, S1, Cs0, 'try'),
     {Env,S,{'try',L, E, Cs, CsCatch0, CsAfter0}};
 
+ac(Env0,S0,{'catch',L, E0}) ->
+    {Env,S,E} = ac(Env0, S0, E0),
+    {Env,S,{'catch',L, E}};
+
 ac(Env0,S0,{'case',L,E0,Cs0}) ->
     {Env1,S1,E} = ac(Env0, S0, E0),
     {Env,S,Cs} = ac_icr_clauses(Env1, S1, Cs0, 'case'),
