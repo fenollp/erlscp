@@ -46,6 +46,7 @@ script:
   - make test_map1
   - make test_map2
   - make test_map3
+  - make test_map4
   - git add -A -f ebin/*.S
   - git --no-pager diff
   - git --no-pager diff --cached

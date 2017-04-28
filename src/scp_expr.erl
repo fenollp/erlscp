@@ -317,6 +317,9 @@ ac(Env0, S0, E={map,L,M0,Fs0}) ->
 ac(Env0, S0, {map_field_assoc,L, K0, V0}) ->
     {Env,S,[K,V]} = ac_list(Env0, S0, [K0,V0]),
     {Env, S, {map_field_assoc,L, K, V}};
+ac(Env0, S0, {map_field_exact,L, K0, V0}) ->
+    {Env,S,[K,V]} = ac_list(Env0, S0, [K0,V0]),
+    {Env, S, {map_field_exact,L, K, V}};
 
 ac(Env0,S0,{remote,L,M0,F0}) ->
     {Env,S,[M,F]} = ac_list(Env0,S0,[M0,F0]),
@@ -700,6 +703,7 @@ find_var_subst(B, [{E1,E2}|T]) ->
                                     ,map
                                     ,map_expr
                                     ,map_field_assoc
+                                    ,map_field_exact
                                     ,nil
                                     ,prefix_expr
                                     ,record_expr
@@ -796,6 +800,8 @@ lin(N, E) ->
             2 * lists:max(linlist(N, Cs));
         map_field_assoc ->
             lists:sum(linlist(N, [erl_syntax:map_field_assoc_name(E), erl_syntax:map_field_assoc_value(E)]));
+        map_field_exact ->
+            lists:sum(linlist(N, [erl_syntax:map_field_exact_name(E), erl_syntax:map_field_exact_value(E)]));
         T when T =:= block_expr;
                T =:= infix_expr;
                T =:= list;
@@ -850,6 +856,8 @@ is_strict(N, E) ->
             is_strict(N, erl_syntax:match_expr_body(E));
         map_field_assoc ->
             lists:any(F, [erl_syntax:map_field_assoc_name(E), erl_syntax:map_field_assoc_value(E)]);
+        map_field_exact ->
+            lists:any(F, [erl_syntax:map_field_exact_name(E), erl_syntax:map_field_exact_value(E)]);
         T when T =:= block_expr;
                T =:= infix_expr;
                T =:= list;
