@@ -5,7 +5,7 @@
 
 a() ->
     Fs = [fun (R) -> setelement(1+2, R, "deux") end
-         ,fun (R) -> setelement(1+3, R, "trois") end
+         ,fun (R) -> setelement(#r.'3', R, "trois") end
          ,fun (R) -> setelement(1+5, R, "cinq") end
          ,fun (R) -> setelement(1+2, R, "DEUX") end
          ],

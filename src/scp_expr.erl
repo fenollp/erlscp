@@ -304,6 +304,9 @@ ac(Env0, S0, {record,L,R,Fs0}) ->
 ac(Env0, S0, {record,L,V0,R,Fs0}) ->
     {Env,S,[V|Fs]} = ac_list(Env0, S0, [V0|Fs0]),
     {Env, S, {record,L, V, R, Fs}};
+ac(Env0, S0, {record_index,L, R, Index0}) ->
+    {Env,S,Index} = ac(Env0, S0, Index0),
+    {Env, S, {record_index,L, R, Index}};
 ac(Env0,S0,{record_field,L,R0,F0}) ->
     {Env,S,[R,F]} = ac_list(Env0,S0,[R0,F0]),
     {Env,S,{record_field,L,R,F}};
