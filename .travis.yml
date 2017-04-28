@@ -29,7 +29,7 @@ script:
   - make S
   - make test_deforestation0
   - make test_deforestation1
-  # - make test_deforestation2
+  - make test_deforestation2
   - make test_deforestation3
   - make test_deforestation4
   - make test_deforestation5
@@ -41,6 +41,7 @@ script:
   # - make test_unfold4
   - make test_unfold5
   - make test_try1
+  - make test_try2
   - make test_map1
   - make test_map2
   - make test_map3

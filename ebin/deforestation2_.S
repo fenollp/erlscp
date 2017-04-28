@@ -1,0 +1,73 @@
+{module, deforestation2}.  %% version = 0
+
+{exports, [{a,0},{b,0},{module_info,0},{module_info,1}]}.
+
+{attributes, []}.
+
+{labels, 12}.
+
+
+{function, a, 0, 2}.
+  {label,1}.
+    {line,[{location,"test/deforestation2.erl",6}]}.
+    {func_info,{atom,deforestation2},{atom,a},0}.
+  {label,2}.
+    {allocate,0,0}.
+    {move,{literal,"0.1.0"},{x,1}}.
+    {move,{literal,"ser Agent/"},{x,0}}.
+    {line,[{location,"test/deforestation2.erl",2}]}.
+    {call,2,{f,4}}.
+    {test_heap,2,1}.
+    {put_list,{integer,85},{x,0},{x,0}}.
+    {deallocate,0}.
+    return.
+
+
+{function, a@1428, 2, 4}.
+  {label,3}.
+    {line,[{location,"test/deforestation2.erl",1}]}.
+    {func_info,{atom,deforestation2},{atom,a@1428},2}.
+  {label,4}.
+    {test,is_nonempty_list,{f,5},[{x,0}]}.
+    {allocate,1,2}.
+    {get_list,{x,0},{y,0},{x,0}}.
+    {line,[{location,"test/deforestation2.erl",2}]}.
+    {call,2,{f,4}}.
+    {test_heap,2,1}.
+    {put_list,{y,0},{x,0},{x,0}}.
+    {deallocate,1}.
+    return.
+  {label,5}.
+    {test,is_nil,{f,3},[{x,0}]}.
+    {move,{x,1},{x,0}}.
+    return.
+
+
+{function, b, 0, 7}.
+  {label,6}.
+    {line,[{location,"test/deforestation2.erl",8}]}.
+    {func_info,{atom,deforestation2},{atom,b},0}.
+  {label,7}.
+    {move,{literal,"User Agent/0.1.0"},{x,0}}.
+    return.
+
+
+{function, module_info, 0, 9}.
+  {label,8}.
+    {line,[]}.
+    {func_info,{atom,deforestation2},{atom,module_info},0}.
+  {label,9}.
+    {move,{atom,deforestation2},{x,0}}.
+    {line,[]}.
+    {call_ext_only,1,{extfunc,erlang,get_module_info,1}}.
+
+
+{function, module_info, 1, 11}.
+  {label,10}.
+    {line,[]}.
+    {func_info,{atom,deforestation2},{atom,module_info},1}.
+  {label,11}.
+    {move,{x,0},{x,1}}.
+    {move,{atom,deforestation2},{x,0}}.
+    {line,[]}.
+    {call_ext_only,2,{extfunc,erlang,get_module_info,2}}.

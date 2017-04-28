@@ -36,18 +36,18 @@
     {bs_restore2,{x,1},{atom,start}}.
   {label,4}.
     {test,bs_get_utf8,
-          {f,7},
+          {f,5},
           2,
           [{x,1},
            {field_flags,[{anno,[7,{file,"test/try2.erl"}]},unsigned,big]}],
           {x,2}}.
-    {test,is_eq_exact,{f,7},[{x,2},{integer,960}]}.
-    {test,bs_test_tail2,{f,7},[{x,1},0]}.
+    {test,is_eq_exact,{f,5},[{x,2},{integer,960}]}.
+    {test,bs_test_tail2,{f,5},[{x,1},0]}.
     {move,{float,3.14},{x,0}}.
     {deallocate,1}.
     return.
   {label,5}.
-    {test,is_nonempty_list,{f,7},[{x,0}]}.
+    {test,is_list,{f,7},[{x,0}]}.
     {deallocate,1}.
     return.
   {label,6}.

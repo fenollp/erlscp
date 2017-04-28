@@ -5,7 +5,7 @@ a() ->
     try get() of
         <<"abc">> -> <<"def">>;
         <<"π"/utf8>>=_Pi -> 3.14e0;
-        [_|_]=PD -> PD
+        PD when is_list(PD) -> PD
     catch
         _:_ -> impossible
     end.

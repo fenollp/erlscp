@@ -7,8 +7,8 @@ clean:
 ASM = $(wildcard test/deforestation*.erl test/unfold*.erl test/try*.erl test/map*.erl)
 
 PA = _build/default/lib/erlscp/ebin/
-ERLC = erlc -o ebin -pa $(PA) -pa ebin
-ERL  = erl -noshell -pa $(PA) -pa ebin +A0 -boot start_clean
+ERLC = erlc -o ebin -pa ebin -pa $(PA)
+ERL  = erl -noshell -pa ebin +A0 -boot start_clean
 
 old: ebin $(patsubst src/%.erl,ebin/%.beam,$(wildcard src/*.erl)) $(wildcard src/*.hrl) Makefile
 ebin:
@@ -36,6 +36,6 @@ S: $(patsubst test/%.erl,S_%,$(ASM))
 	git --no-pager diff -- ebin
 	bash -c '[[ 0 -eq $$(git status --porcelain ebin/*.S | wc -l) ]]'
 S_%: test/%.erl
-	$(ERLC) +to_asm test/$*.erl
-	$(ERLC) test/$*.erl
+	erlc -o ebin +to_asm test/$*.erl
+	erlc -o ebin test/$*.erl
 	$(ERL) -eval 'R = $*:a(), R = $*:b().' -s init stop
