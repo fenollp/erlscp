@@ -40,6 +40,7 @@ script:
   - make test_unfold3
   # - make test_unfold4
   - make test_unfold5
+  - make test_try0
   - make test_try1
   - make test_try2
   - make test_try3

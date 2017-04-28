@@ -335,6 +335,15 @@ ac(Env0,S0,{'fun',L,{function,M0,F0,A0}}) ->
     {Env,S,[M,F,A]} = ac_list(Env0,S0,[M0,F0,A0]),
     {Env,S,{'fun',L,{function,M,F,A}}};
 
+ac(Env0,S0,{'receive',L, Cs0}) ->
+    {Env,S,Cs} = ac_icr_clauses(Env0, S0, Cs0, 'receive'),
+    {Env,S,{'receive',L, Cs}};
+ac(Env0,S0,{'receive',L, Cs0, E0, Afters0}) ->
+    {Env1,S1,Cs} = ac_icr_clauses(Env0, S0, Cs0, 'receive'),
+    {Env2,S2,E} = ac(Env1, S1, E0),
+    {Env,S,Afters} = ac_list(Env2, S2, Afters0),
+    {Env,S,{'receive',L, Cs, E, Afters}};
+
 ac(Env0,S0,{'try',L, E0, Cs0, CsCatch0, CsAfter0}) -> %%FIXME: ac these last 2 clauses too
     {Env1,S1,E} = ac_list(Env0, S0, E0),
     {Env,S,Cs} = ac_icr_clauses(Env1, S1, Cs0, 'try'),
@@ -442,13 +451,12 @@ ac_guard(Env0,S0,G0) ->
 ac_icr_clauses(Env0,S0,[{clause,L,P0,G0,B0}|Cs0],ExprType) ->
     Vars0 = sets:from_list(lists:flatmap(fun scp_pattern:pattern_variables/1, P0)),
     Vars1 = sets:subtract(Vars0, Env0#env.bound),
-    Vars2 = sets:filter(fun (Name) -> not dict:is_key(Name,S0) end,
-                        Vars1),
+    Vars2 = sets:filter(fun (Name) -> not dict:is_key(Name,S0) end, Vars1),
     {Env1,S1} = fresh_variables(Env0, S0, sets:to_list(Vars2)),
-    P = [ subst(S1, X) || X <- P0 ],
+    P = [subst(S1, X) || X <- P0],
     %% The new variables are bound in the guard and in the body.
-    {Env3,S3,G} = ac_guard(Env1#env{bound=sets:union(Env1#env.bound, Vars1)},
-                           S1, G0),
+    Env2 = Env1#env{bound=sets:union(Env1#env.bound, Vars1)},
+    {Env3,S3,G} = ac_guard(Env2, S1, G0),
     %% Variables can become bound in the body.
     {Env4,S4,B} = ac_list(Env3, S3, B0),
     case Cs0 of
