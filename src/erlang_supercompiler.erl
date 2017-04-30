@@ -1,6 +1,6 @@
 %% -*- coding: utf-8; mode: erlang -*-
 
-%% Copyright (C) 2012-2013 Göran Weinholt <goran@weinholt.se>
+%% Copyright (C) 2012-2013, 2017 Göran Weinholt <goran@weinholt.se>
 
 %% Permission is hereby granted, free of charge, to any person obtaining a
 %% copy of this software and associated documentation files (the "Software"),
@@ -32,19 +32,31 @@ stdfuns() ->
       flat1map(F,[X|Xs]) -> F(X) ++ flat1map(F, Xs).",
      %% Used for L ++ R.
      "append([],Ys) -> Ys;
-      append([X|Xs],Ys) -> [X|append(Xs,Ys)]."
+      append([X|Xs],Ys) -> [X|append(Xs,Ys)].",
+     %% Inlining of lists:foldl/3.
+     "foldl(F, Accu, List) ->
+          case List of
+              [Hd|Tail] ->
+                  foldl(F, F(Hd, Accu), Tail);
+              [] when is_function(F, 2) -> Accu
+          end."
      ].
+
+inlined_module_funs() ->
+    dict:from_list([{{lists,foldl},foldl}]).
 
 parse_transform(Forms0, _Options) ->
     ?DEBUG("Before: ~p~n", [Forms0]),
     {Libnames,Stdforms} = get_stdfuns(#env{seen_vars = function_names(Forms0)}),
-    Forms = scp_desugar:forms(Forms0 ++ Stdforms, Libnames),
+    Records = extract_records(Forms0),
+    Forms = scp_desugar:forms(Forms0 ++ Stdforms, Libnames, Records, inlined_module_funs()),
     Global = extract_functions(Forms),
     NoWhistling = attrs(no_whistle, Forms),
     Env1 = #env{global = Global,
                 seen_vars = function_names(Forms),
                 no_whistling = sets:from_list(NoWhistling),
-                libnames = Libnames},
+                libnames = Libnames,
+                records = Records},
     Ret0 = forms(Forms, Env1),
     ?DEBUG("After: ~p~n", [Ret0]),
     Ret = lists:takewhile(fun ({eof,_}) -> false; (_) -> true end, Ret0),
@@ -108,6 +120,26 @@ function_names1([_|Fs]) ->
     function_names1(Fs);
 function_names1([]) ->
     [].
+
+%% Go over the forms and extract record definitions.
+extract_records(Forms) ->
+    extract_records(Forms, dict:new()).
+
+extract_records([F|Fs], Records) ->
+    case erl_syntax:type(F) of
+        attribute ->
+            case erl_syntax:atom_value(erl_syntax:attribute_name(F)) of
+                record ->
+                    [NameTree, FieldsTree] = erl_syntax:attribute_arguments(F),
+                    Name = erl_syntax:atom_value(NameTree),
+                    Fields = erl_syntax:tuple_elements(FieldsTree),
+                    extract_records(Fs, dict:store(Name, Fields, Records));
+                _ -> extract_records(Fs, Records)
+            end;
+        _ -> extract_records(Fs, Records)
+    end;
+extract_records([], Records) ->
+    Records.
 
 %% Defines a set of standard functions that are called by the
 %% supercompiled code. Returns a dict and a list of forms.

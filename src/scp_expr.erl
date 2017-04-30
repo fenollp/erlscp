@@ -122,12 +122,25 @@ make_call(Line, {constructor,_,tuple}, As) ->
     {tuple,Line,As};
 make_call(Line, {'fun',Lf,{function,F,A}}, As) when A == length(As) ->
     make_call(Line, {atom,Lf,F}, As);
+
+make_call(Line, {atom,_,is_function}, [{'fun',_,_}]) ->
+    {atom,Line,true};
+make_call(Line, {atom,_,is_function}, [{'fun',_,{clauses,Cs}}, {integer,_,Arity}]) ->
+    %% Check if a clause with the right arity exists.
+    HasMatchingClause = lists:any(fun ({clause,_,Vars,_,_}) -> length(Vars) == Arity end, Cs),
+    {atom,Line,HasMatchingClause};
 make_call(Line, {atom,_,element}, [{integer,_,I},{tuple,_,Es}])
   when I > 0, I =< length(Es) ->
     %% Need to residualize the rest of Es for effect.
     Rest = lists:sublist(Es, 1, I - 1) ++
         lists:sublist(Es, I + 1, length(Es)),
     list_to_block(Line, Rest ++ [lists:nth(I, Es)]);
+
+make_call(Line, {atom,_,setelement}, [{integer,_,I},{tuple,_,Es},E])
+  when I > 0, I =< length(Es) ->
+    Elements = lists:sublist(Es, 1, I - 1) ++
+        [E|lists:sublist(Es, I + 1, length(Es))],
+    {tuple,Line,Elements};
 make_call(Line, {atom,_,hd}, [{cons,_,H,T}]) ->
     %% Residualize T for effect.
     make_block(Line, T, H);
@@ -220,32 +233,32 @@ subst_1(S, E) ->
 subst_fun(S) ->
     fun
         (E={var,_,'_'}) ->
-                     E;
+            E;
         (E={var,L,V}) ->
-                     case dict:find(V, S) of
-                         %% XXX: discards line info if the replacement is not a
-                         %% variable.
-                         {ok,{var,_,V1}} -> {var,L,V1};
-                         {ok,V1} -> V1;
-                         _ -> E
-                     end;
+            case dict:find(V, S) of
+                %% XXX: discards line info if the replacement is not a
+                %% variable.
+                {ok,{var,_,V1}} -> {var,L,V1};
+                {ok,V1} -> V1;
+                _ -> E
+            end;
         (E={'fun',L,{clauses,Cs0}}) ->
-                     Cs = lists:map(fun (C={clause,Lc,H,G,B}) ->
-                                            Vars = lists:flatmap(fun scp_pattern:pattern_variables/1, H),
-                                            %% Remove shadowed variables from
-                                            %% the substitution.
-                                            S1 = dict:filter(fun (N,_) ->
-                                                                     not lists:member(N, Vars)
-                                                             end,
-                                                             S),
-                                            subst(S1,C)
-                                    end,
-                                    Cs0),
-                     {'fun',L,{clauses,Cs}};
+            Cs = lists:map(fun (C={clause,Lc,H,G,B}) ->
+                                   Vars = lists:flatmap(fun scp_pattern:pattern_variables/1, H),
+                                   %% Remove shadowed variables from
+                                   %% the substitution.
+                                   S1 = dict:filter(fun (N,_) ->
+                                                            not lists:member(N, Vars)
+                                                    end,
+                                                    S),
+                                   subst(S1,C)
+                           end,
+                           Cs0),
+            {'fun',L,{clauses,Cs}};
         %% TODO: other places where shadowing takes place
         (E) ->
-                     subst_1(S, E)
-             end.
+            subst_1(S, E)
+    end.
 
 %% Alpha conversion. Generates fresh names for all variables
 %% introduced in the expression.
@@ -1143,5 +1156,21 @@ linear1_test() ->
 
 linear2_test() ->
     false = is_linear('X', read("Y=X+X, Y")).
+
+make_call_is_function_test() ->
+    Fun = {atom,1,is_function},
+    Args = [{'fun',22,
+             {clauses,
+              [{clause,22,
+                [{var,22,'F'},{var,22,'R'}],
+                [],
+                [{nil,1}]}]}},
+            {integer,10,2}],
+    {atom,1,true} = make_call(1, Fun, Args).
+
+make_call_set_element_tuple_test() ->
+    {call,_,Fun,Args} = read("setelement(2, {10, green, bottles}, red)"),
+    Folded = make_call(1, Fun, Args),
+    Folded = read("{10,red,bottles}").
 
 -endif.

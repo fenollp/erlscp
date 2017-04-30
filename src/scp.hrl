@@ -1,6 +1,6 @@
 %% -*- coding: utf-8; mode: erlang -*-
 
-%% Copyright (C) 2012-2013 Göran Weinholt <goran@weinholt.se>
+%% Copyright (C) 2012-2013, 2017 Göran Weinholt <goran@weinholt.se>
 
 %% Permission is hereby granted, free of charge, to any person obtaining a
 %% copy of this software and associated documentation files (the "Software"),
@@ -43,7 +43,9 @@
               whistle_enabled = true,
               no_whistling = sets:new(),
               %% The gensym'd names for stdfuns().
-              libnames = dict:new()
+              libnames = dict:new(),
+              %% Record definitions
+              records = dict:new()
              }).
 
 -define(IS_CONST_TYPE(T),

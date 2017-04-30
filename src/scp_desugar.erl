@@ -1,6 +1,6 @@
 %% -*- coding: utf-8; mode: erlang -*-
 
-%% Copyright (C) 2012-2013 Göran Weinholt <goran@weinholt.se>
+%% Copyright (C) 2012-2013, 2017 Göran Weinholt <goran@weinholt.se>
 
 %% Permission is hereby granted, free of charge, to any person obtaining a
 %% copy of this software and associated documentation files (the "Software"),
@@ -20,24 +20,25 @@
 %% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 %% DEALINGS IN THE SOFTWARE.
 
-%% Translates list comprehensions etc into simpler code.
+%% Translates list comprehensions, records, etc into simpler code.
 
 -module(scp_desugar).
--export([forms/2]).
+-export([forms/4]).
 -include("scp.hrl").
 
-%% Libnames is a dict containing the names for some standard functions.
-forms([F={function,_,Name,Arity,_}|Fs], Libnames) ->
+%% Libnames is a dict containing the names for some standard
+%% functions. Records is a dict of record names to definitions.
+forms([F={function,_,Name,Arity,_}|Fs], Libnames, Records, InlinedModuleFuns) ->
     Expr0 = scp_expr:function_to_fun(F),
-    Expr = desugar(Expr0, Libnames),
+    Expr = desugar(Expr0, Libnames, Records, InlinedModuleFuns),
     Function = scp_expr:fun_to_function(erl_syntax:revert(Expr), Name, Arity),
-    [Function|forms(Fs, Libnames)];
-forms([X|Xs], Libnames) ->
-    [X|forms(Xs, Libnames)];
-forms([], _) ->
+    [Function|forms(Fs, Libnames, Records, InlinedModuleFuns)];
+forms([X|Xs], Libnames, Records, InlinedModuleFuns) ->
+    [X|forms(Xs, Libnames, Records, InlinedModuleFuns)];
+forms([], _, _, _) ->
     [].
 
-desugar(E0, Libnames) ->
+desugar(E0, Libnames, Records, InlinedModuleFuns) ->
     erl_syntax_lib:map(
       fun (Node) ->
               case erl_syntax:type(Node) of
@@ -60,8 +61,29 @@ desugar(E0, Libnames) ->
                           _ ->
                               Node
                       end;
-                  _ ->
-                      Node
+                  record_expr ->
+                      %% Rewrite record expressions to tuples.
+                      Type = erl_syntax:record_expr_type(Node),
+                      case erl_syntax:type(Type) of
+                          atom ->
+                              case dict:find(erl_syntax:atom_value(Type), Records) of
+                                  {ok,RecordDef} ->
+                                      record_expr_translate(Node, RecordDef);
+                                  _ -> Node
+                              end;
+                          _ -> Node
+                      end;
+                  module_qualifier ->
+                      %% Rewrite some module functions to our own functions.
+                      Module = erl_syntax:atom_value(erl_syntax:module_qualifier_argument(Node)),
+                      Function = erl_syntax:atom_value(erl_syntax:module_qualifier_body(Node)),
+                      case dict:find({Module,Function}, InlinedModuleFuns) of
+                          {ok,NewName} ->
+                              erl_syntax:atom(dict:fetch(NewName, Libnames));
+                          _ ->
+                              Node
+                      end;
+                  _ -> Node
               end
       end, E0).
 
@@ -97,3 +119,50 @@ infix_translate(E0, Libnames, Fname) ->
 
 %% Copy line info
 ca(Src, Dst) -> erl_syntax:copy_attrs(Src, Dst).
+
+%% Rewrite record expressions to tuple expressions. Def is a list of
+%% record_field tuples. Only #r{...} is rewritten for now.
+record_expr_translate(E, Def) ->
+    case erl_syntax:record_expr_argument(E) of
+        none ->
+            RecordType = erl_syntax:record_expr_type(E),
+            Updates = erl_syntax:record_expr_fields(E),
+            ?DEBUG("From Def: ~p~nFrom E: ~p~n", [Def, Updates]),
+            Record0 = record_initial_tuple(Def),
+            ?DEBUG("Initial tuple: ~p~n", [Record0]),
+            Record = record_update_fields(Record0, Def, Updates),
+            ?DEBUG("Updated tuple: ~p~n", [Record]),
+            erl_syntax:revert(erl_syntax:tuple([RecordType|Record]));
+        _ -> E
+    end.
+
+record_field_value(F) ->
+    case erl_syntax:record_field_value(F) of
+        none ->
+            ca(F, erl_syntax:atom("undefined"));
+        E ->
+            E
+    end.
+
+record_initial_tuple([F|Fs]) ->
+    V = record_field_value(F),
+    [erl_syntax:revert(V)|record_initial_tuple(Fs)];
+record_initial_tuple([]) ->
+    [].
+
+record_update_fields(Record0, Defs, [F|Fs]) ->
+    FieldName = erl_syntax:atom_value(erl_syntax:record_field_name(F)),
+    FieldValue = erl_syntax:record_field_value(F),
+    Record = record_update_one(Record0, Defs, FieldName, FieldValue),
+    record_update_fields(Record, Defs, Fs);
+record_update_fields(Record, _, []) ->
+    Record.
+
+record_update_one([Field|Fields], [Def|Defs], FieldName, FieldValue) ->
+    DefName = erl_syntax:atom_value(erl_syntax:record_field_name(Def)),
+    case DefName of
+        FieldName ->
+            [FieldValue|Fields];
+        _ ->
+            [Field|record_update_one(Fields, Defs, FieldName, FieldValue)]
+    end.

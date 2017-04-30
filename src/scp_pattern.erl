@@ -1,6 +1,6 @@
 %% -*- coding: utf-8; mode: erlang -*-
 
-%% Copyright (C) 2012-2013 Göran Weinholt <goran@weinholt.se>
+%% Copyright (C) 2012-2013, 2017 Göran Weinholt <goran@weinholt.se>
 
 %% Permission is hereby granted, free of charge, to any person obtaining a
 %% copy of this software and associated documentation files (the "Software"),
@@ -238,6 +238,7 @@ find_matching_const(E, Cs0) -> fmcc(E, Cs0).
 fmcc(E={T,_,V}, [C={clause,_,[{T,_,V}],_,_}|Cs]) -> fmcc_cons(E, {yes,C}, Cs);
 fmcc(E={T,_,_}, [C={clause,_,[{T,_,_}],_,_}|Cs]) -> fmcc(E, Cs);
 fmcc(E={nil,_}, [C={clause,_,[{nil,_}],_,_}|Cs]) -> fmcc_cons(E, {yes,C}, Cs);
+fmcc(E={nil,_}, [{clause,_,[{cons,_,_,_}],_,_}|Cs]) -> fmcc(E, Cs);
 fmcc(E, [C={clause,_,[{var,_,'_'}],_,_}|Cs]) -> fmcc_cons(E, {yes,C}, Cs);
 fmcc(E, [C|Cs]) -> [{maybe,C}|fmcc(E, Cs)];
 fmcc(_, []) -> [].
@@ -611,5 +612,16 @@ reconcile_test() ->
     C0 = {clause,1,[P],[],[{nil,1}]},
     {C,nothing} = reconcile(sets:new(), [1], {var,1,'X'}, C0),
     ?DEBUG("C: ~p~n",[C]).
+
+fcc_nil_test() ->
+    E = {nil,1},
+    Cs0 = [{clause,8,
+            [{cons,8,{var,8,'Hd@6750'},{var,8,'Tail@664'}}],
+            [],
+            [{nil,3}]},
+           {clause,1,[{nil,1}],[],[{nil,2}]}],
+    Result = find_matching_const(E, Cs0),
+    ?DEBUG("Result: ~p~n", [Result]),
+    Result = [{yes,{clause,1,[{nil,1}],[],[{nil,2}]}}].
 
 -endif.
