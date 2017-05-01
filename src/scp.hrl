@@ -21,31 +21,31 @@
 %% DEALINGS IN THE SOFTWARE.
 
 %% Environments.
--record(env, {found = [],
-              w = [],
-              ls = [],
-              memo = [],
+-record(env, {found = []
+             ,w = []
+             ,ls = []
+             ,memo = []
               %% This contains the variables that were returned in a
               %% substitution created by scp_generalize:split/2.
-              split_vars = [],
-              bound = sets:new(),
+             ,split_vars = []
+             ,bound = sets:new()
               %% Global and local functions. The keys are {Name,Arity}
               %% and the values are fun terms.
-              global = dict:new(),
-              local = dict:new(),
+             ,global = dict:new()
+             ,local = dict:new()
               %% seen_vars keeps track of all the variable names which
               %% have been seen anywhere. It's used when generating
               %% fresh names (gensym).
-              seen_vars = sets:new(),
+             ,seen_vars = sets:new()
               %% The name of the function being supercompiled.
-              name = "",
+             ,name = ""
               %% The whistle can be disabled.
-              whistle_enabled = true,
-              no_whistling = sets:new(),
+             ,whistle_enabled = true
+             ,no_whistling = sets:new()
               %% The gensym'd names for stdfuns().
-              libnames = dict:new(),
+             ,libnames = dict:new()
               %% Record definitions
-              records = dict:new()
+             ,records = dict:new()
              }).
 
 -define(IS_CONST_TYPE(T),

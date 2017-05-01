@@ -39,53 +39,51 @@ forms([], _, _, _) ->
     [].
 
 desugar(E0, Libnames, Records, InlinedModuleFuns) ->
-    erl_syntax_lib:map(
-      fun (Node) ->
-              case erl_syntax:type(Node) of
-                  list_comp ->
-                      X = lc_translate(erl_syntax:list_comp_template(Node),
-                                       erl_syntax:list_comp_body(Node),
-                                       Libnames),
-                      ?DEBUG("desugared:~n~p~n", [erl_syntax:revert(X)]),
-                      X;
-                  infix_expr ->
-                      Op = erl_syntax:infix_expr_operator(Node),
-                      case erl_syntax:type(Op) of
-                          operator ->
-                              case erl_syntax:operator_name(Op) of
-                                  '++' ->
-                                      infix_translate(Node, Libnames, append);
-                                  _ ->
-                                      Node
-                              end;
-                          _ ->
-                              Node
-                      end;
-                  record_expr ->
-                      %% Rewrite record expressions to tuples.
-                      Type = erl_syntax:record_expr_type(Node),
-                      case erl_syntax:type(Type) of
-                          atom ->
-                              case dict:find(erl_syntax:atom_value(Type), Records) of
-                                  {ok,RecordDef} ->
-                                      record_expr_translate(Node, RecordDef);
-                                  _ -> Node
-                              end;
-                          _ -> Node
-                      end;
-                  module_qualifier ->
-                      %% Rewrite some module functions to our own functions.
-                      Module = erl_syntax:atom_value(erl_syntax:module_qualifier_argument(Node)),
-                      Function = erl_syntax:atom_value(erl_syntax:module_qualifier_body(Node)),
-                      case dict:find({Module,Function}, InlinedModuleFuns) of
-                          {ok,NewName} ->
-                              erl_syntax:atom(dict:fetch(NewName, Libnames));
-                          _ ->
-                              Node
-                      end;
-                  _ -> Node
-              end
-      end, E0).
+    F = fun (Node) -> desugar_node(Node, Libnames, Records, InlinedModuleFuns) end,
+    erl_syntax_lib:map(F, E0).
+
+desugar_node(Node, Libnames, Records, InlinedModuleFuns) ->
+    case erl_syntax:type(Node) of
+        list_comp ->
+            X = lc_translate(erl_syntax:list_comp_template(Node),
+                             erl_syntax:list_comp_body(Node),
+                             Libnames),
+            ?DEBUG("desugared:~n~p~n", [erl_syntax:revert(X)]),
+            X;
+        infix_expr ->
+            Op = erl_syntax:infix_expr_operator(Node),
+            case operator =:= erl_syntax:type(Op)
+                andalso erl_syntax:operator_name(Op)
+            of
+                '++' ->
+                    infix_translate(Node, Libnames, append);
+                _ ->
+                    Node
+            end;
+        record_expr ->
+            %% Rewrite record expressions to tuples.
+            Type = erl_syntax:record_expr_type(Node),
+            case atom =:= erl_syntax:type(Type)
+                andalso dict:find(erl_syntax:atom_value(Type), Records)
+            of
+                {ok, RecordDef} ->
+                    record_expr_translate(Node, RecordDef);
+                _ ->
+                    Node
+            end;
+        module_qualifier ->
+            %% Rewrite some module functions to our own functions.
+            Module = erl_syntax:atom_value(erl_syntax:module_qualifier_argument(Node)),
+            Function = erl_syntax:atom_value(erl_syntax:module_qualifier_body(Node)),
+            case dict:find({Module,Function}, InlinedModuleFuns) of
+                {ok,NewName} ->
+                    erl_syntax:atom(dict:fetch(NewName, Libnames));
+                _ ->
+                    Node
+            end;
+        _ ->
+            Node
+    end.
 
 %% Translate list comprehensions using a simple approach from Simon
 %% PJ's _The Implementation of Functional Programming Languages_.

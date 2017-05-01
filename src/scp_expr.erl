@@ -166,7 +166,7 @@ free_variables(Expr) ->
     Vars = delete_duplicates(variables(Expr)),
     Ann = erl_syntax:get_ann(Tree),
     case lists:keyfind(free, 1, Ann) of
-        {_,Free} ->
+        {free, Free} ->
             [V || V <- Vars, ordsets:is_element(V,Free)];
         _ -> []
     end.
@@ -178,8 +178,9 @@ variables0(Expr) ->
         variable ->
             [erl_syntax:variable_name(Expr)];
         _ ->
-            lists:map(fun (Es) -> lists:map(fun variables0/1, Es) end,
-                      erl_syntax:subtrees(Expr))
+            [[variables0(E) || E <- Es]
+             || Es <- erl_syntax:subtrees(Expr)
+            ]
     end.
 
 -ifdef(UNUSED_LOCAL_FUNCTION).
@@ -575,10 +576,10 @@ find_var_subst(B0, [{{'if',_,Cs1},{'if',_,Cs2}}|T])
     {_,Gs1,Bs1} = unzip_clauses(Cs1),
     {_,Gs2,Bs2} = unzip_clauses(Cs2),
     [Es1,Es2] = lists:map(fun lists:flatten/1, [Gs1 ++ Bs1, Gs2 ++ Bs2]),
-    if length(Es1) == length(Es2) ->
-            find_var_subst(B0, lists:zip(Es1, Es2) ++ T);
-       true ->
-            false
+    case length(Es1) =:= length(Es2) of
+        false -> false;
+        true ->
+            find_var_subst(B0, lists:zip(Es1, Es2) ++ T)
     end;
 find_var_subst(B0, [{{'case',_,E1,Cs1},{'case',_,E2,Cs2}}|T])
   when length(Cs1) == length(Cs2) ->
@@ -623,29 +624,30 @@ find_var_subst(B0, [{{'fun',_,{clauses,Cs1}},{'fun',_,{clauses,Cs2}}}|T])
   when length(Cs1) == length(Cs2) ->
     {Ps10,Gs10,Bs1} = unzip_clauses(Cs1),
     {Ps20,Gs20,Bs2} = unzip_clauses(Cs2),
-    [Ps1,Ps2,Gs1,Gs2] = lists:map(fun lists:flatten/1, [Ps10,Ps20,Gs10,Gs20]),
-    if length(Ps1) == length(Ps2) andalso
-       length(Gs1) == length(Gs2) andalso
-       length(Bs1) == length(Bs2) ->
+    [Ps1,Ps2,Gs1,Gs2] = [lists:flatten(PG) || PG <- [Ps10,Ps20,Gs10,Gs20]],
+    case length(Ps1) =:= length(Ps2) andalso
+        length(Gs1) =:= length(Gs2) andalso
+        length(Bs1) =:= length(Bs2)
+    of
+        false -> false;
+        true ->
             %% Same as 'case', except there's no E1, E2. This also
             %% depends quite a bit on alpha conversion.
             case find_var_subst(B0, lists:zip(Ps1,Ps2)) of
-                {ok,Ss} ->
-                    Vars = lists:flatmap(fun scp_pattern:pattern_variables/1,
-                                         Ps1 ++ Ps2),
+                false -> false;
+                {ok, Ss} ->
+                    Vars = lists:flatmap(fun scp_pattern:pattern_variables/1, Ps1 ++ Ps2),
                     B = sets:union(sets:from_list(Vars), B0),
                     Bodies = lists:flatmap(fun ({Body1,Body2}) ->
-                                                   lists:zip(Body1,Body2)
+                                                   lists:zip(Body1, Body2)
                                            end,
                                            lists:zip(Bs1, Bs2)),
                     Sd = dict:from_list(Ss),
-                    NewT = [{subst(Sd, X),subst(Sd, Y)} ||
-                               {X,Y} <- lists:zip(Gs1, Gs2) ++ Bodies ++ T],
-                    find_var_subst(B, NewT, Ss);
-                false -> false
-            end;
-       true ->
-            false
+                    NewT = [{subst(Sd, X),subst(Sd, Y)}
+                            || {X,Y} <- lists:zip(Gs1, Gs2) ++ Bodies ++ T
+                           ],
+                    find_var_subst(B, NewT, Ss)
+            end
     end;
 %% TODO: more stuff
 find_var_subst(B, [{E1,E2}|T]) ->

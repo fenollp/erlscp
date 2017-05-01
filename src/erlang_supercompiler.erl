@@ -28,22 +28,23 @@
 
 stdfuns() ->
     [%% Used for list comprehensions.
-     "flat1map(_,[]) -> [];
-      flat1map(F,[X|Xs]) -> F(X) ++ flat1map(F, Xs).",
+     "flat1map(_,[]) -> [];\n"
+     "flat1map(F,[X|Xs]) -> F(X) ++ flat1map(F, Xs)."
      %% Used for L ++ R.
-     "append([],Ys) -> Ys;
-      append([X|Xs],Ys) -> [X|append(Xs,Ys)].",
+    ,"append([],Ys) -> Ys;\n"
+     "append([X|Xs],Ys) -> [X|append(Xs,Ys)]."
      %% Inlining of lists:foldl/3.
-     "foldl(F, Accu, List) ->
-          case List of
-              [Hd|Tail] ->
-                  foldl(F, F(Hd, Accu), Tail);
-              [] when is_function(F, 2) -> Accu
-          end."
+    ,"foldl(F, Acc, List) ->\n"
+     "    case List of\n"
+     "        [] when is_function(F, 2) -> Acc;\n"
+     "        [Hd|Tail] ->\n"
+     "            foldl(F, F(Hd, Acc), Tail)\n"
+     "    end."
      ].
 
 inlined_module_funs() ->
-    dict:from_list([{{lists,foldl},foldl}]).
+    dict:from_list([{{lists, foldl}, foldl}
+                   ]).
 
 parse_transform(Forms0, _Options) ->
     ?DEBUG("Before: ~p~n", [Forms0]),
@@ -52,11 +53,12 @@ parse_transform(Forms0, _Options) ->
     Forms = scp_desugar:forms(Forms0 ++ Stdforms, Libnames, Records, inlined_module_funs()),
     Global = extract_functions(Forms),
     NoWhistling = attrs(no_whistle, Forms),
-    Env1 = #env{global = Global,
-                seen_vars = function_names(Forms),
-                no_whistling = sets:from_list(NoWhistling),
-                libnames = Libnames,
-                records = Records},
+    Env1 = #env{global = Global
+               ,seen_vars = function_names(Forms)
+               ,no_whistling = sets:from_list(NoWhistling)
+               ,libnames = Libnames
+               ,records = Records
+               },
     Ret0 = forms(Forms, Env1),
     ?DEBUG("After: ~p~n", [Ret0]),
     Ret = lists:takewhile(fun ({eof,_}) -> false; (_) -> true end, Ret0),
@@ -126,17 +128,16 @@ extract_records(Forms) ->
     extract_records(Forms, dict:new()).
 
 extract_records([F|Fs], Records) ->
-    case erl_syntax:type(F) of
-        attribute ->
-            case erl_syntax:atom_value(erl_syntax:attribute_name(F)) of
-                record ->
-                    [NameTree, FieldsTree] = erl_syntax:attribute_arguments(F),
-                    Name = erl_syntax:atom_value(NameTree),
-                    Fields = erl_syntax:tuple_elements(FieldsTree),
-                    extract_records(Fs, dict:store(Name, Fields, Records));
-                _ -> extract_records(Fs, Records)
-            end;
-        _ -> extract_records(Fs, Records)
+    case attribute =:= erl_syntax:type(F)
+        andalso record =:= erl_syntax:atom_value(erl_syntax:attribute_name(F))
+    of
+        false ->
+            extract_records(Fs, Records);
+        true ->
+            [NameTree, FieldsTree] = erl_syntax:attribute_arguments(F),
+            Name = erl_syntax:atom_value(NameTree),
+            Fields = erl_syntax:tuple_elements(FieldsTree),
+            extract_records(Fs, dict:store(Name, Fields, Records))
     end;
 extract_records([], Records) ->
     Records.
@@ -164,19 +165,16 @@ parse(Str) ->
     Function.
 
 atom_subst(S, E0) ->
-    E = erl_syntax_lib:map(
-          fun (Node) ->
-                  case erl_syntax:type(Node) of
-                      atom ->
-                          case dict:find(erl_syntax:atom_value(Node), S) of
-                              {ok,New} ->
-                                  E = erl_syntax:atom(New),
-                                  erl_syntax:copy_attrs(Node, E);
-                              _ ->
-                                  Node
-                          end;
-                      _ ->
-                          Node
-                  end
-          end, E0),
-    erl_syntax:revert(E).
+    F = fun (Node) -> atom_subst_map(Node, S) end,
+    erl_syntax:revert(erl_syntax_lib:map(F, E0)).
+
+atom_subst_map(Node, S) ->
+    case atom =:= erl_syntax:type(Node)
+        andalso dict:find(erl_syntax:atom_value(Node), S)
+    of
+        {ok, New} ->
+            E = erl_syntax:atom(New),
+            erl_syntax:copy_attrs(Node, E);
+        _ ->
+            Node
+    end.
