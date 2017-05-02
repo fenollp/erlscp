@@ -48,13 +48,15 @@ asm(Mod) ->
              ok = file:delete(binary:replace(Erl, <<".erl">>, <<".S">>))
      end
     ,fun (_) ->
+             ERLC0   = read(src('S', Mod)),
+             SUPERC0 = read(dst('S', Mod)),
              {_,_} = write_both('P', Mod),
              {_,_} = write_both('E', Mod),
              {ERLC, SUPERC} = write_both('S', Mod),
              [compare_execution(fun purge_erlc_load/1, Mod)
-             ,?_assertEqual(read(src('S', Mod)), ERLC)
+             ,?_assertEqual(ERLC0, ERLC)
              ,compare_execution(fun purge_superc_load/1, Mod)
-             ,?_assertEqual(read(dst('S', Mod)), SUPERC)
+             ,?_assertEqual(SUPERC0, SUPERC)
              ]
      end
     }.
