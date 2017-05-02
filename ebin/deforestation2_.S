@@ -23,10 +23,10 @@
     return.
 
 
-{function, a@1428, 2, 4}.
+{function, a@2049, 2, 4}.
   {label,3}.
     {line,[{location,"test/deforestation2.erl",1}]}.
-    {func_info,{atom,deforestation2},{atom,a@1428},2}.
+    {func_info,{atom,deforestation2},{atom,a@2049},2}.
   {label,4}.
     {test,is_nonempty_list,{f,5},[{x,0}]}.
     {allocate,1,2}.
