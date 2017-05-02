@@ -822,8 +822,10 @@ lin(N, E) ->
                T =:= record_expr;
                T =:= tuple ->
             lists:sum(linlist(N, lists:flatten(erl_syntax:subtrees(E))));
-        T when ?IS_CONST_TYPE(T); T==implicit_fun;
-               T==operator ->
+        T when ?IS_CONST_TYPE(T);
+               T =:= implicit_fun;
+               T =:= operator;
+               T =:= record_index_expr ->
             0
     end.
 
@@ -878,8 +880,11 @@ is_strict(N, E) ->
                T =:= record_expr;
                T =:= tuple ->
             lists:any(F, lists:flatten(erl_syntax:subtrees(E)));
-        T when ?IS_CONST_TYPE(T); T==implicit_fun; T==fun_expr;
-               T==operator ->
+        T when ?IS_CONST_TYPE(T);
+               T =:= fun_expr;
+               T =:= implicit_fun;
+               T =:= operator;
+               T =:= record_index_expr ->
             false
     end.
 
