@@ -1,5 +1,3 @@
-%% Copyright © 2017 Pierre Fenoll ‹pierrefenoll@gmail.com›
-%% See LICENSE for licensing information.
 %% -*- coding: utf-8 -*-
 
 %% @module Testing assembly generation.
@@ -10,8 +8,31 @@
 %% API tests.
 
 deforestation0_test_() -> asm(deforestation0).
+deforestation1_test_() -> asm(deforestation1).
+deforestation2_test_() -> asm(deforestation2).
+deforestation3_test_() -> asm(deforestation3).
+deforestation4_test_() -> asm(deforestation4).
+deforestation5_test_() -> asm(deforestation5).
+deforestation10_test_() -> asm(deforestation10).
 
+map1_test_() -> asm(map1).
+map2_test_() -> asm(map2).
+map3_test_() -> asm(map3).
 map4_test_() -> asm(map4).
+
+try0_test_() -> asm(try0).
+try1_test_() -> asm(try1).
+try2_test_() -> asm(try2).
+try3_test_() -> asm(try3).
+
+unfold0_test_() -> asm(unfold0).
+unfold1_test_() -> asm(unfold1).
+unfold2_test_() -> asm(unfold2).
+unfold3_test_() -> asm(unfold3).
+-ifdef(FIXME).
+unfold4_test_() -> asm(unfold4).
+-endif.
+unfold5_test_() -> asm(unfold5).
 
 %% Internals
 
