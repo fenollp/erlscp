@@ -1,6 +1,6 @@
 %% -*- coding: utf-8; mode: erlang -*-
 
-%% Copyright (C) 2012-2013 Göran Weinholt <goran@weinholt.se>
+%% Copyright (C) 2012-2013, 2017 Göran Weinholt <goran@weinholt.se>
 
 %% Permission is hereby granted, free of charge, to any person obtaining a
 %% copy of this software and associated documentation files (the "Software"),
@@ -56,7 +56,7 @@ extend_bound(Env,Vars) ->
 %% downwards and upwards the stack. R is the current context.
 
 drive(Env0, E, Ctxt) ->
-    ?DEBUG("~nDRIVE:~n~p~n~p~n",[E,Ctxt]),
+    ?DEBUG("~nDRIVE: ~p~n~p~n",[E,Ctxt]),
     drive0(Env0, E, Ctxt).
 
 %% Evaluation rules.
@@ -67,12 +67,14 @@ drive0(Env0, E, Ctxt=[#case_ctxt{clauses=Cs0}|R]) when ?IS_CONST_EXPR(E) -> %R1
     ?DEBUG("R1~n",[]),
     case scp_pattern:find_matching_const(E, Cs0) of
         [{yes,{clause,L,P,[],B}}] ->
+            ?DEBUG("R1 matching const: ~p~n", [B]),
             drive(Env0, scp_expr:list_to_block(L, B), R);
         _ ->
             %% No clause matches the constant exactly. TODO: if the
             %% first case that matches binds the constant to a
             %% variable and that variable is not defined by every
             %% clause, then turn this case into a let
+            ?DEBUG("No clause matched constant ~p~n", [E]),
             build(Env0, E, Ctxt)
     end;
 
@@ -321,7 +323,8 @@ build_case_final(Env0, Line, Expr, Cs0, Rs) ->
                            B1 = scp_expr:list_to_block(Lc, B0),
                            {Env02,B} = drive(Env01, B1, R),
                            Env03 = Env02#env{bound=Env00#env.bound},
-                           {{clause,Lc,H0,G0,[B]},Env03}
+                           G = scp_pattern:simplify_guard_seq(G0),
+                           {{clause,Lc,H0,G,[B]},Env03}
                    end,
                    Env0, lists:zip(Cs0,Rs)),
     %% FIXME: find the new bindings going out of the case expr

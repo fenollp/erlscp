@@ -136,7 +136,7 @@ gensyms(Env0, Line, Prefix, Es) ->
     {NewEnv,NewNames,Subst}.
 
 %% True if F and As refer to append from
-%% erland_supercompiler:stdfuns/0.
+%% erlang_supercompiler:stdfuns/0.
 is_append(Env, {'fun',_,{function,F,2}}, [_,_]) ->
     case dict:fetch(append, Env#env.libnames) of
         F -> true;
