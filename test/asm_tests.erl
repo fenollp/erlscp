@@ -9,6 +9,8 @@
 
 %% API tests.
 
+deforestation0_test_() -> asm(deforestation0).
+
 map4_test_() -> asm(map4).
 
 %% Internals

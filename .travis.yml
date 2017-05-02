@@ -27,7 +27,6 @@ script:
   - set -e
   - make
   - make S
-  - make test_deforestation0
   - make test_deforestation1
   - make test_deforestation2
   - make test_deforestation3

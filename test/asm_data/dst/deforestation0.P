@@ -1,0 +1,5 @@
+[{attribute,1,file,{"test/asm_data/deforestation0.erl",1}},
+ {attribute,1,module,deforestation0},
+ {attribute,2,export,[{a,0},{b,0}]},
+ {function,4,a,0,[{clause,4,[],[],[{call,4,{atom,4,get},[]}]}]},
+ {function,6,b,0,[{clause,6,[],[],[{call,6,{atom,6,get},[]}]}]}]
