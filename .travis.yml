@@ -26,6 +26,6 @@ before_script:
 script:
   - set -e
   - make
-  - git add -A -f ebin/*.S
+  - git add -A -f test/asm_data/*
   - git --no-pager diff
   - git --no-pager diff --cached
