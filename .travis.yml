@@ -24,7 +24,6 @@ before_script:
   - kerl list installations
 
 script:
-  - erl -noshell -pa ebin +A0 -boot start_clean -eval 'erlang:display(erlang:system_info(otp_release))' -s init stop
   - set -e
   - make
   - make S
