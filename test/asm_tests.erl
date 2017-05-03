@@ -102,9 +102,7 @@ purge_compile_load(Mod, Options) ->
     _ = code:delete(Mod),
     Erl = erl(Mod),
     Ebin = filename:dirname(Erl),
-    {ok, Mod} = compile(Erl, [{outdir, Ebin}
-                              |Options
-                             ]),
+    {ok, Mod} = compile(Erl, [{outdir, Ebin} | Options]),
     true = code:add_patha(Ebin),
     {module, Mod} = code:load_file(Mod),
     ok.
@@ -117,7 +115,7 @@ erlc(Mod, MoreOptions) ->
     iolist_to_binary(io_lib:format("~p\n", [S])).
 
 compile(File, Options) ->
-    io:format(user, "Compiling ~s\n\tOptions: ~p\n", [File, Options]),
+    %% io:format(user, "Compiling ~s\n\tOptions: ~p\n", [File, Options]),
     compile:file(File, Options).
 
 superc_options() ->
@@ -129,7 +127,7 @@ superc_options() ->
 erlc_options() ->
     [verbose
     ,return_errors
-    ,return_warnings
+     %% ,return_warnings
     ].
 
 %% End of Module.
