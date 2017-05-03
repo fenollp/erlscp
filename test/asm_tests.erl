@@ -102,9 +102,9 @@ purge_compile_load(Mod, Options) ->
     _ = code:delete(Mod),
     Erl = erl(Mod),
     Ebin = filename:dirname(Erl),
-    {ok, Mod} = compile:file(Erl, [{outdir, Ebin}
-                                   |Options
-                                  ]),
+    {ok, Mod} = compile(Erl, [{outdir, Ebin}
+                              |Options
+                             ]),
     true = code:add_patha(Ebin),
     {module, Mod} = code:load_file(Mod),
     ok.
@@ -113,8 +113,12 @@ erlc(Mod, MoreOptions) ->
     Erl = erl(Mod),
     Ebin = filename:dirname(Erl),
     Options = MoreOptions ++ [{outdir,Ebin}, binary | erlc_options()],
-    {ok, _, S} = compile:file(Erl, Options),
+    {ok, _, S} = compile(Erl, Options),
     iolist_to_binary(io_lib:format("~p\n", [S])).
+
+compile(File, Options) ->
+    io:format("Compiling ~s\n\tOptions: ~p\n", [File, Options]),
+    compile:file(File, Options).
 
 superc_options() ->
     [AppEbin] = [Dir || Dir <- code:get_path(), lists:suffix("/erlscp/ebin", Dir)],
