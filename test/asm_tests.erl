@@ -117,7 +117,7 @@ erlc(Mod, MoreOptions) ->
     iolist_to_binary(io_lib:format("~p\n", [S])).
 
 compile(File, Options) ->
-    io:format("Compiling ~s\n\tOptions: ~p\n", [File, Options]),
+    io:format(user, "Compiling ~s\n\tOptions: ~p\n", [File, Options]),
     compile:file(File, Options).
 
 superc_options() ->
