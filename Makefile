@@ -2,13 +2,17 @@ all:
 	rebar3 do compile,xref,eunit
 
 clean:
+	rebar3 clean
 	$(if $(wildcard ebin/*.beam), rm ebin/*.beam)
 
-ASM = $(wildcard test/deforestation*.erl test/unfold*.erl)
+ASM = $(wildcard test/deforestation*.erl test/unfold*.erl test/try*.erl test/map*.erl)
 
 PA = _build/default/lib/erlscp/ebin/
-ERLC = erlc -o ebin -pa $(PA) -pa ebin
-ERL  = erl -noshell -pa $(PA) -pa ebin +A0 -boot start_clean
+ERLC = erlc -o ebin -pa ebin -pa $(PA)
+ERL  = erl -noshell -pa ebin +A0 -boot start_clean
+
+src/otp_flags.hrl:
+	$(ERL) -eval 'OTP = list_to_integer(case erlang:system_info(otp_release) of "R"++[A,B|_] -> [A,B]; AB -> AB end), io:format("-define(OTP_~p, true).\n", [OTP]), lists:foreach(fun (R) -> io:format("-define(OTP_~p_AND_ABOVE).\n", [R]) end, lists:seq(15, OTP)).' -s init stop >$@
 
 old: ebin $(patsubst src/%.erl,ebin/%.beam,$(wildcard src/*.erl)) $(wildcard src/*.hrl) Makefile
 ebin:
@@ -36,6 +40,6 @@ S: $(patsubst test/%.erl,S_%,$(ASM))
 	git --no-pager diff -- ebin
 	bash -c '[[ 0 -eq $$(git status --porcelain ebin/*.S | wc -l) ]]'
 S_%: test/%.erl
-	$(ERLC) +to_asm test/$*.erl
-	$(ERLC) test/$*.erl
+	erlc -o ebin +to_asm test/$*.erl
+	erlc -o ebin test/$*.erl
 	$(ERL) -eval 'R = $*:a(), R = $*:b().' -s init stop

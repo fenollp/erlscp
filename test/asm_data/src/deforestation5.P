@@ -1,0 +1,12 @@
+[{attribute,1,file,{"test/asm_data/deforestation5.erl",1}},
+ {attribute,1,module,deforestation5},
+ {attribute,2,export,[{a,0},{b,0}]},
+ {function,6,a,0,
+     [{clause,6,[],[],
+          [{call,6,
+               {atom,6,atom_to_binary},
+               [{atom,6,my_app},{atom,6,utf8}]}]}]},
+ {function,8,b,0,
+     [{clause,8,[],[],
+          [{bin,8,[{bin_element,8,{string,8,"my_app"},default,default}]}]}]},
+ {eof,9}]

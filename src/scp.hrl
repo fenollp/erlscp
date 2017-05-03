@@ -48,13 +48,13 @@
              ,records = dict:new()
              }).
 
--define(IS_CONST_TYPE(T),
-        T==integer;
-            T==float;
-            T==atom;
-            T==string;
-            T==char;
-            T==nil
+-define(IS_CONST_TYPE(T), T =:= atom;
+            T =:= binary;
+            T =:= char;
+            T =:= float;
+            T =:= integer;
+            T =:= nil;
+            T =:= string
        ).
 
 -define(IS_CONST_EXPR(E),

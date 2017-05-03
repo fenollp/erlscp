@@ -298,10 +298,31 @@ ac(Env0,S0,{tuple,L,Es0}) ->
     {Env,S,Es} = ac_list(Env0,S0,Es0),
     {Env,S,{tuple,L,Es}};
 
-ac(Env,S,E={record,_,_,_}) -> {Env,S,E};
+ac(Env0, S0, {record,L,R,Fs0}) ->
+    {Env,S,Fs} = ac_list(Env0, S0, Fs0),
+    {Env, S, {record,L, R, Fs}};
+ac(Env0, S0, {record,L,V0,R,Fs0}) ->
+    {Env,S,[V|Fs]} = ac_list(Env0, S0, [V0|Fs0]),
+    {Env, S, {record,L, V, R, Fs}};
+ac(Env0, S0, {record_index,L, R, Index0}) ->
+    {Env,S,Index} = ac(Env0, S0, Index0),
+    {Env, S, {record_index,L, R, Index}};
 ac(Env0,S0,{record_field,L,R0,F0}) ->
     {Env,S,[R,F]} = ac_list(Env0,S0,[R0,F0]),
     {Env,S,{record_field,L,R,F}};
+
+ac(Env0, S0, E={map,L,Es0}) ->
+    {Env,S,Es} = ac_list(Env0, S0, Es0),
+    {Env, S, {map,L, Es}};
+ac(Env0, S0, E={map,L,M0,Fs0}) ->
+    {Env,S,[M|Fs]} = ac_list(Env0, S0, [M0|Fs0]),
+    {Env, S, {map,L, M, Fs}};
+ac(Env0, S0, {map_field_assoc,L, K0, V0}) ->
+    {Env,S,[K,V]} = ac_list(Env0, S0, [K0,V0]),
+    {Env, S, {map_field_assoc,L, K, V}};
+ac(Env0, S0, {map_field_exact,L, K0, V0}) ->
+    {Env,S,[K,V]} = ac_list(Env0, S0, [K0,V0]),
+    {Env, S, {map_field_exact,L, K, V}};
 
 ac(Env0,S0,{remote,L,M0,F0}) ->
     {Env,S,[M,F]} = ac_list(Env0,S0,[M0,F0]),
@@ -316,6 +337,24 @@ ac(Env,S,E={'fun',L,{function,M,F,A}}) when is_atom(M), is_atom(F), is_integer(A
 ac(Env0,S0,{'fun',L,{function,M0,F0,A0}}) ->
     {Env,S,[M,F,A]} = ac_list(Env0,S0,[M0,F0,A0]),
     {Env,S,{'fun',L,{function,M,F,A}}};
+
+ac(Env0,S0,{'receive',L, Cs0}) ->
+    {Env,S,Cs} = ac_icr_clauses(Env0, S0, Cs0, 'receive'),
+    {Env,S,{'receive',L, Cs}};
+ac(Env0,S0,{'receive',L, Cs0, E0, Afters0}) ->
+    {Env1,S1,Cs} = ac_icr_clauses(Env0, S0, Cs0, 'receive'),
+    {Env2,S2,E} = ac(Env1, S1, E0),
+    {Env,S,Afters} = ac_list(Env2, S2, Afters0),
+    {Env,S,{'receive',L, Cs, E, Afters}};
+
+ac(Env0,S0,{'try',L, E0, Cs0, CsCatch0, CsAfter0}) -> %%FIXME: ac these last 2 clauses too
+    {Env1,S1,E} = ac_list(Env0, S0, E0),
+    {Env,S,Cs} = ac_icr_clauses(Env1, S1, Cs0, 'try'),
+    {Env,S,{'try',L, E, Cs, CsCatch0, CsAfter0}};
+
+ac(Env0,S0,{'catch',L, E0}) ->
+    {Env,S,E} = ac(Env0, S0, E0),
+    {Env,S,{'catch',L, E}};
 
 ac(Env0,S0,{'case',L,E0,Cs0}) ->
     {Env1,S1,E} = ac(Env0, S0, E0),
@@ -415,13 +454,12 @@ ac_guard(Env0,S0,G0) ->
 ac_icr_clauses(Env0,S0,[{clause,L,P0,G0,B0}|Cs0],ExprType) ->
     Vars0 = sets:from_list(lists:flatmap(fun scp_pattern:pattern_variables/1, P0)),
     Vars1 = sets:subtract(Vars0, Env0#env.bound),
-    Vars2 = sets:filter(fun (Name) -> not dict:is_key(Name,S0) end,
-                        Vars1),
+    Vars2 = sets:filter(fun (Name) -> not dict:is_key(Name,S0) end, Vars1),
     {Env1,S1} = fresh_variables(Env0, S0, sets:to_list(Vars2)),
-    P = [ subst(S1, X) || X <- P0 ],
+    P = [subst(S1, X) || X <- P0],
     %% The new variables are bound in the guard and in the body.
-    {Env3,S3,G} = ac_guard(Env1#env{bound=sets:union(Env1#env.bound, Vars1)},
-                           S1, G0),
+    Env2 = Env1#env{bound=sets:union(Env1#env.bound, Vars1)},
+    {Env3,S3,G} = ac_guard(Env2, S1, G0),
     %% Variables can become bound in the body.
     {Env4,S4,B} = ac_list(Env3, S3, B0),
     case Cs0 of
@@ -672,8 +710,14 @@ find_var_subst(B, [{E1,E2}|T]) ->
                                     ,infix_expr
                                     ,integer
                                     ,list
+                                    ,match_expr
+                                    ,map
+                                    ,map_expr
+                                    ,map_field_assoc
+                                    ,map_field_exact
                                     ,nil
                                     ,prefix_expr
+                                    ,record_expr
                                     ,string
                                     ,tuple
                                     ,underscore
@@ -765,12 +809,23 @@ lin(N, E) ->
             %% difficult to say statically if it's linear.
             Cs = erl_syntax:fun_expr_clauses(E),
             2 * lists:max(linlist(N, Cs));
-        T when T==list; T==tuple; T==infix_expr;
-               T==prefix_expr; T==block_expr;
-               T==module_qualifier ->
+        map_field_assoc ->
+            lists:sum(linlist(N, [erl_syntax:map_field_assoc_name(E), erl_syntax:map_field_assoc_value(E)]));
+        map_field_exact ->
+            lists:sum(linlist(N, [erl_syntax:map_field_exact_name(E), erl_syntax:map_field_exact_value(E)]));
+        T when T =:= block_expr;
+               T =:= infix_expr;
+               T =:= list;
+               T =:= map_expr;
+               T =:= module_qualifier;
+               T =:= prefix_expr;
+               T =:= record_expr;
+               T =:= tuple ->
             lists:sum(linlist(N, lists:flatten(erl_syntax:subtrees(E))));
-        T when ?IS_CONST_TYPE(T); T==implicit_fun;
-               T==operator ->
+        T when ?IS_CONST_TYPE(T);
+               T =:= implicit_fun;
+               T =:= operator;
+               T =:= record_index_expr ->
             0
     end.
 
@@ -812,12 +867,24 @@ is_strict(N, E) ->
         match_expr ->
             %% XXX: ignores the pattern
             is_strict(N, erl_syntax:match_expr_body(E));
-        T when T==list; T==tuple; T==infix_expr;
-               T==prefix_expr; T==block_expr;
-               T==module_qualifier ->
+        map_field_assoc ->
+            lists:any(F, [erl_syntax:map_field_assoc_name(E), erl_syntax:map_field_assoc_value(E)]);
+        map_field_exact ->
+            lists:any(F, [erl_syntax:map_field_exact_name(E), erl_syntax:map_field_exact_value(E)]);
+        T when T =:= block_expr;
+               T =:= infix_expr;
+               T =:= list;
+               T =:= map_expr;
+               T =:= module_qualifier;
+               T =:= prefix_expr;
+               T =:= record_expr;
+               T =:= tuple ->
             lists:any(F, lists:flatten(erl_syntax:subtrees(E)));
-        T when ?IS_CONST_TYPE(T); T==implicit_fun; T==fun_expr;
-               T==operator ->
+        T when ?IS_CONST_TYPE(T);
+               T =:= fun_expr;
+               T =:= implicit_fun;
+               T =:= operator;
+               T =:= record_index_expr ->
             false
     end.
 

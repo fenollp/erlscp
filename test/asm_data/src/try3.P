@@ -1,0 +1,6 @@
+[{attribute,1,file,{"test/asm_data/try3.erl",1}},
+ {attribute,1,module,try3},
+ {attribute,2,export,[{a,0},{b,0}]},
+ {function,4,a,0,[{clause,4,[],[],[{'catch',5,{call,5,{atom,5,get},[]}}]}]},
+ {function,7,b,0,[{clause,7,[],[],[{call,8,{atom,8,get},[]}]}]},
+ {eof,9}]

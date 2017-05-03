@@ -1,0 +1,8 @@
+[{attribute,1,file,{"test/asm_data/deforestation3.erl",1}},
+ {attribute,1,module,deforestation3},
+ {attribute,2,export,[{a,0},{b,0}]},
+ {function,6,a,0,
+           [{clause,6,[],[],
+                    [{call,6,{atom,6,atom_to_list},[{atom,6,my_app}]}]}]},
+ {function,8,b,0,[{clause,8,[],[],[{string,8,"my_app"}]}]},
+ {eof,9}]
