@@ -1,5 +1,5 @@
 all:
-	rebar3 do compile,xref,eunit
+	rebar3 do compile,xref,eunit,cover
 
 clean:
 	rebar3 clean
