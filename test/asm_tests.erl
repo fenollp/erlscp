@@ -20,8 +20,8 @@ deforestation10_test_() -> asm(deforestation10).
 map1_test_() -> asm(map1).
 -ifdef(OTP_18_AND_ABOVE).
 map2_test_() -> asm(map2).
--endif.
 map3_test_() -> asm(map3).
+-endif.
 -ifdef(OTP_19_AND_ABOVE).
 map4_test_() -> asm(map4).
 -endif.
