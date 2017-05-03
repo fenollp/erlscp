@@ -128,8 +128,8 @@ superc_options() ->
 
 erlc_options() ->
     [verbose
-    ,report_errors
-    ,report_warnings
+    ,return_errors
+    ,return_warnings
     ].
 
 %% End of Module.
