@@ -9,7 +9,9 @@
 
 deforestation0_test_() -> asm(deforestation0).
 deforestation1_test_() -> asm(deforestation1).
+-ifdef(OTP_19_AND_ABOVE).
 deforestation2_test_() -> asm(deforestation2).
+-endif.
 deforestation3_test_() -> asm(deforestation3).
 deforestation4_test_() -> asm(deforestation4).
 deforestation5_test_() -> asm(deforestation5).
@@ -18,11 +20,15 @@ deforestation10_test_() -> asm(deforestation10).
 map1_test_() -> asm(map1).
 map2_test_() -> asm(map2).
 map3_test_() -> asm(map3).
+-ifdef(OTP_19_AND_ABOVE).
 map4_test_() -> asm(map4).
+-endif.
 
 try0_test_() -> asm(try0).
+-ifdef(OTP_19_AND_ABOVE).
 try1_test_() -> asm(try1).
 try2_test_() -> asm(try2).
+-endif.
 try3_test_() -> asm(try3).
 
 unfold0_test_() -> asm(unfold0).
