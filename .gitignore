@@ -2,3 +2,12 @@
 _build/
 src/otp_flags.hrl
 test/asm_data/*.erl
+test/asm_data/*.P
+test/asm_data/*.E
+test/asm_data/*.S
+!test/asm_data/src/*.P
+!test/asm_data/src/*.E
+!test/asm_data/src/*.S
+test/asm_data/dst/*.P
+test/asm_data/dst/*.E
+test/asm_data/dst/*.S

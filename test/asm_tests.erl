@@ -94,11 +94,15 @@ read(S) ->
 
 erlc_compare_execution(Mod) ->
     ok = purge_erlc_load(Mod),
-    ?_assertEqual(Mod:b(), Mod:a()).
+    Expected = (catch (Mod:b())),
+    Got = (catch (Mod:a())),
+    ?_assertEqual(Expected, Got).
 
 superc_compare_execution(Mod) ->
     ok = purge_superc_load(Mod),
-    ?_assertEqual(Mod:b(), Mod:a()).
+    Expected = (catch (Mod:b())),
+    Got = (catch (Mod:a())),
+    ?_assertEqual(Expected, Got).
 
 purge_erlc_load(Mod) ->
     purge_compile_load(Mod, erlc_options()).
