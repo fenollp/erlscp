@@ -41,6 +41,7 @@ unfold3_test_() -> asm(unfold3).
 unfold4_test_() -> asm(unfold4).
 -endif.
 unfold5_test_() -> asm(unfold5).
+unfold6_test_() -> asm(unfold6).
 
 %% Internals
 
