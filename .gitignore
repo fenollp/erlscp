@@ -1,3 +1,4 @@
 !ebin/*.S
 _build/
 src/otp_flags.hrl
+test/asm_data/*.erl

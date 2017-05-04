@@ -62,9 +62,9 @@ asm(Mod) ->
              {_,_} = write_both('P', Mod),
              {_,_} = write_both('E', Mod),
              {ERLC, SUPERC} = write_both('S', Mod),
-             [compare_execution(fun purge_erlc_load/1, Mod)
+             [erlc_compare_execution(Mod)
              ,?_assertEqual(ERLC0, ERLC)
-             ,compare_execution(fun purge_superc_load/1, Mod)
+             ,superc_compare_execution(Mod)
              ,?_assertEqual(SUPERC0, SUPERC)
              ]
      end
@@ -92,8 +92,12 @@ read(S) ->
         {ok, Bin} -> Bin
     end.
 
-compare_execution(ERLC, Mod) ->
-    ok = ERLC(Mod),
+erlc_compare_execution(Mod) ->
+    ok = purge_erlc_load(Mod),
+    ?_assertEqual(Mod:b(), Mod:a()).
+
+superc_compare_execution(Mod) ->
+    ok = purge_superc_load(Mod),
     ?_assertEqual(Mod:b(), Mod:a()).
 
 purge_erlc_load(Mod) ->
