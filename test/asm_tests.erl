@@ -87,8 +87,10 @@ write(Path, Data) ->
     ok = file:write_file(Path, Data).
 
 read(S) ->
-    {ok, Bin} = file:read_file(S),
-    Bin.
+    case file:read_file(S) of
+        {error, enoent} -> missing;
+        {ok, Bin} -> Bin
+    end.
 
 compare_execution(ERLC, Mod) ->
     ok = ERLC(Mod),
