@@ -1,4 +1,4 @@
-﻿# erlscp [![TravisCI build status](https://travis-ci.org/fenollp/erlscp.svg?branch=master)](https://travis-ci.org/fenollp/erlscp/builds)
+﻿# erlscp [![TravisCI build status](https://travis-ci.org/fenollp/erlscp.svg?branch=master)](https://travis-ci.org/fenollp/erlscp/builds) [![Coverage Status](https://coveralls.io/repos/github/fenollp/erlscp/badge.svg?branch=master)](https://coveralls.io/github/fenollp/erlscp?branch=master)
 
 A supercompiler pass for Erlang. Brought back from the ashes by pierrefenoll@gmail.com.
 
