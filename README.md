@@ -2,6 +2,117 @@
 
 A supercompiler pass for Erlang. Brought back from the ashes by pierrefenoll@gmail.com.
 
+## Extracts of conversations with @weinholt
+
+In case you want to spend some time fixing the last few issues...
+
+### Incomplete matching support
+
+```
+> I notice your implementation of the inline foldl uses case instead of
+> function clauses. I'm guessing this has to do with the incomplete
+> matching support?
+
+Yeah, that's exactly it. I think I mentioned it in the thesis, that I
+should've implemented unification instead of what I did.
+```
+
+### Should use erl_syntax modules
+
+```
+Something I can say in general about the code base, is that erl_syntax
+and erl_syntax_lib has a lot of useful utilities that I should've used
+more throughout the code. I'm sure that an Erlang module somewhere
+already implements alpha conversion, since it's such a common thing to
+do in a compiler. If so, it should be used instead of erlscp's own ac
+function.
+```
+
+### Make blocks more like lets
+
+```
+> The one test that has me worried is
+> https://github.com/fenollp/erlscp/blob/b2a61cf40aeee1fb9be674bcda0e441d782852a4/test/asm_tests.erl#L41
+> The tested code is
+> https://github.com/fenollp/erlscp/blob/b2a61cf40aeee1fb9be674bcda0e441d782852a4/test/asm_data/unfold4.hrl#L13
+> It fails with the compiler complaining that "S" in unbound. I'm not sure
+> where to start looking on that one...
+
+I had a look at the "S" bug in unfold4 and think I've traced it to the
+"let" rule R7/R8/R9 (renamed S to State to make it easier to search
+for):
+
+| R7/R8/R9
+| let!!!
+|  Lhs='State@7' Rhs={tuple,7,[{atom,7,some},{string,7,"state"}]}
+|  Body={match,8,
+|              {var,8,'Fs@527'},
+|              {cons,8,
+|                    {'fun',8,{function,two,2}},
+|                    {cons,8,
+|                          {'fun',9,{function,three,2}},
+|                          {cons,8,
+|                                {'fun',10,{function,five,2}},
+|                                {cons,8,
+|                                      {'fun',11,{function,'TWO',2}},
+|                                      {nil,8}}}}}}
+| no residual let.
+
+As you can see, it believes this to be a let where Lhs doesn't appear
+anywhere in Body. But in actuality Lhs appears in a block right next to
+the whole expression. I don't have time to fix it myself right now, but
+I can say the fix would probably be to adjust scp_expr:make_block/3.
+There's already a TODO:
+
+| %% From Oscar Waddell's dissertation. The return expression for whole
+| %% the block becomes the second expression of the block.
+|
+| %% TODO: this should instead create a structure where matches in E1
+| %% become structured like let.
+| make_block(L0, E1, E2) ->
+|     case is_simple(E1) of
+|         true -> E2;
+|         false ->
+|             E1n = case E1 of
+|                       {block,_,[E1a,E1b]} ->
+|                           case is_simple(E1b) of
+|                               true -> E1a;
+|                               _ -> E1
+|                           end;
+|                       _ -> E1
+|                   end,
+|             case E2 of
+|                 {block,L1,[E3,E4]} ->
+|                     {block,L1,[{block,L0,[E1n,E3]},E4]};
+|                 _ ->
+|                     {block,L0,[E1n,E2]}
+|             end
+|     end.
+
+So the make_block/3 you see here is from Oscar Waddell's Ph.D.
+dissertation, which was about the partial evaluator cp0 from Chez
+Scheme. It had a useful property in that optimizer, but I'm pretty sure
+that I never got any use of this property in erlscp.
+
+The TODO is about making the blocks match the structure of a let. In
+Erlang there is no let expression, but we can pretend that "begin X = Y,
+expr end." is a simple let expression binding one variable X to Y in
+expr. So an improved make_block/3 would structure the blocks so that
+matches always end up as the first expression of a block, and the second
+expression is the expression where the new variables are visible.
+
+I have a suspicion that it will not be enough to check if E1 is a match
+expression. One might also need to check inside E2 to see if there is
+a new level of blocks where there is a match that should be pulled out.
+Something like "begin begin X = Y, Y end, Y end" where the nested X = Y
+should be pulled out to the top level. Not sure if it's a problem in
+practice, but the point is to not let the drive function see what it
+thinks is a let expression, where the Lhs is actually used outside of
+the second expression.
+```
+
+
+## Original README by @weinholt
 
 -*- coding: utf-8-with-signature; mode: outline -*-
 
