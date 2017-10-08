@@ -7,7 +7,7 @@ clean:
 
 ASM = $(wildcard test/deforestation*.erl test/unfold*.erl test/try*.erl test/map*.erl)
 
-PA = _build/default/lib/erlscp/ebin/
+PA = _build/test/lib/*/ebin
 ERLC = erlc -o ebin -pa ebin -pa $(PA)
 ERL  = erl -noshell -pa ebin +A0 -boot start_clean
 
@@ -38,7 +38,7 @@ test_%: $(OBJECTS)
 
 S: $(patsubst test/%.erl,S_%,$(ASM))
 	git --no-pager diff -- ebin
-	bash -c '[[ 0 -eq $$(git status --porcelain ebin/*.S | wc -l) ]]'
+	bash -c '[[ 0 -eq $$(git status --porcelain ebin/$*.S | wc -l) ]]'
 S_%: test/%.erl
 	erlc -o ebin +to_asm test/$*.erl
 	erlc -o ebin test/$*.erl

@@ -41,6 +41,7 @@ unfold3_test_() -> asm(unfold3).
 unfold4_test_() -> asm(unfold4).
 -endif.
 unfold5_test_() -> asm(unfold5).
+unfold6_test_() -> asm(unfold6).
 
 %% Internals
 
@@ -61,6 +62,7 @@ asm(Mod) ->
              {_,_} = write_both('P', Mod),
              {_,_} = write_both('E', Mod),
              {ERLC, SUPERC} = write_both('S', Mod),
+             %% [?_assert(true)
              [compare_execution(fun purge_erlc_load/1, Mod)
              ,?_assertEqual(ERLC0, ERLC)
              ,compare_execution(fun purge_superc_load/1, Mod)
