@@ -1,0 +1,31 @@
+diff --git a/src/erl_compile2.erl b/src/erl_compile2.erl
+index 18d7548..7b0e074 100644
+--- a/src/erl_compile2.erl
++++ b/src/erl_compile2.erl
+@@ -17,12 +17,13 @@
+ %%
+ %% %CopyrightEnd%
+ %%
+--module(erl_compile).
++-module(erl_compile2).
+ 
+--include("erl_compile.hrl").
+--include("file.hrl").
++-include_lib("stdlib/include/erl_compile.hrl").
++-include_lib("kernel/include/file.hrl").
+ 
+ -export([compile_cmdline/0]).
++-export([compile_cmdline/1]).
+ 
+ -export_type([cmd_line_arg/0]).
+ 
+@@ -54,6 +55,9 @@ compiler(_) ->         no.
+ 
+ compile_cmdline() ->
+     List = init:get_plain_arguments(),
++    compile_cmdline(List).
++
++compile_cmdline(List) ->
+     case compile(List) of
+ 	ok -> my_halt(0);
+ 	error -> my_halt(1);

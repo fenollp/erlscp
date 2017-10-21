@@ -2,6 +2,39 @@
 
 A supercompiler pass for Erlang. Brought back from the ashes by pierrefenoll@gmail.com.
 
+### Example
+
+Inlines [inline0.erl](test/asm_data/inline0.hrl)'s `a/0` into `b/0`:
+
+```erlang
+-module(inline0).
+-export([a/0, b/0]).
+
+a() ->
+    {N,_} = a1(0),
+    N.
+
+a1(N) -> {N,N}.
+
+b() -> 0.
+```
+
+```shell
+$ rebar3 escriptize
+$ ./superlc -S inline0.erl
+...
+$ cat inline0.S
+...
+{function, a, 0, 2}.
+  {label,1}.
+    {line,[{location,"inline0.erl",5}]}.
+    {func_info,{atom,inline0},{atom,a},0}.
+  {label,2}.
+    {move,{integer,0},{x,0}}.  %% <--- a() got compiled into a() -> 0.
+    return.
+...
+```
+
 ## Extracts of conversations with @weinholt
 
 In case you want to spend some time fixing the last few issues...
