@@ -1,0 +1,10 @@
+[{attribute,1,file,{"test/asm_data/inline0.erl",1}},
+ {attribute,2,module,inline0},
+ {attribute,3,export,[{a,0},{b,0}]},
+ {function,5,a,0,[{clause,5,[],[],[{integer,6,0}]}]},
+ {function,9,a1,1,
+           [{clause,9,
+                    [{var,9,'N'}],
+                    [],
+                    [{tuple,9,[{var,9,'N'},{var,9,'N'}]}]}]},
+ {function,11,b,0,[{clause,11,[],[],[{integer,11,0}]}]}]
