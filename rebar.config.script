@@ -1,6 +1,6 @@
-case "true" =:= os:getenv("TRAVIS") of
+case os:getenv("TRAVIS_JOB_ID") of
     false -> CONFIG;
-    true ->
-        CoverallsJobId = {coveralls_service_job_id, os:getenv("TRAVIS_JOB_ID")},
-        lists:keystore(coveralls_service_job_id, 1, CONFIG, CoverallsJobId)
+    Id ->
+        Key = coveralls_service_job_id,
+        lists:keystore(Key, 1, CONFIG, {Key,Id})
 end.
