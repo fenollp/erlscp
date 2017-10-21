@@ -29,3 +29,4 @@ script:
   - set -e
   - make update_erl_compile2
   - make
+  - rebar3 as test coveralls send
