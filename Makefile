@@ -1,9 +1,16 @@
+.PHONY: all update_erl_compile2
+
 all:
-	rebar3 do compile,xref,eunit,cover
+	rebar3 do escriptize,xref,eunit,cover
 
 clean:
 	rebar3 clean
 	$(if $(wildcard ebin/*.beam), rm ebin/*.beam)
+
+update_erl_compile2: URL = 'https://raw.githubusercontent.com/erlang/otp/master/lib/stdlib/src/erl_compile.erl'
+update_erl_compile2:
+	curl -o src/erl_compile2.erl $(URL)
+	git apply due_to_arity_0.patch
 
 ASM = $(wildcard test/deforestation*.erl test/unfold*.erl test/try*.erl test/map*.erl)
 

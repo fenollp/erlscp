@@ -3,6 +3,7 @@ sudo: false
 language: erlang
 
 otp_release:
+  - 20.1
   - 19.2
   - 18.3
   - 17.5
@@ -14,6 +15,7 @@ matrix:
   allow_failures:
     - otp_release: R15B03
     - otp_release: R16B03-1
+    - otp_release: 17.5
 
 install:
   - wget https://s3.amazonaws.com/rebar3/rebar3 && chmod +x ./rebar3
@@ -25,4 +27,5 @@ before_script:
 
 script:
   - set -e
+  - make update_erl_compile2
   - make

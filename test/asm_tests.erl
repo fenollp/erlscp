@@ -42,6 +42,8 @@ unfold4_test_() -> asm(unfold4).
 -endif.
 unfold5_test_() -> asm(unfold5).
 
+inline0_test_() -> asm(inline0).
+
 %% Internals
 
 asm(Mod) ->
