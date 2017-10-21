@@ -1,7 +1,7 @@
 .PHONY: all update_erl_compile2
 
 all:
-	rebar3 do compile,xref,eunit,cover
+	rebar3 do escriptize,xref,eunit,cover
 
 clean:
 	rebar3 clean

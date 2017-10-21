@@ -25,4 +25,5 @@ before_script:
 
 script:
   - set -e
+  - make update_erl_compile2
   - make

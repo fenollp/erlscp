@@ -22,7 +22,6 @@
 -include_lib("stdlib/include/erl_compile.hrl").
 -include_lib("kernel/include/file.hrl").
 
--export([compile_cmdline/0]).
 -export([compile_cmdline/1]).
 
 -export_type([cmd_line_arg/0]).
@@ -51,11 +50,7 @@ compiler(_) ->         no.
 
 -type cmd_line_arg() :: atom() | string().
 
--spec compile_cmdline() -> no_return().
-
-compile_cmdline() ->
-    List = init:get_plain_arguments(),
-    compile_cmdline(List).
+-spec compile_cmdline([cmd_line_arg()]) -> no_return().
 
 compile_cmdline(List) ->
     case compile(List) of
