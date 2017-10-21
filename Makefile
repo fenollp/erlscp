@@ -18,9 +18,6 @@ PA = _build/default/lib/erlscp/ebin/
 ERLC = erlc -o ebin -pa ebin -pa $(PA)
 ERL  = erl -noshell -pa ebin +A0 -boot start_clean
 
-src/otp_flags.hrl:
-	$(ERL) -eval 'OTP = list_to_integer(case erlang:system_info(otp_release) of "R"++[A,B|_] -> [A,B]; AB -> AB end), io:format("-define(OTP_~p, true).\n", [OTP]), lists:foreach(fun (R) -> io:format("-define(OTP_~p_AND_ABOVE).\n", [R]) end, lists:seq(15, OTP)).' -s init stop >$@
-
 old: ebin $(patsubst src/%.erl,ebin/%.beam,$(wildcard src/*.erl)) $(wildcard src/*.hrl) Makefile
 ebin:
 	mkdir $@
