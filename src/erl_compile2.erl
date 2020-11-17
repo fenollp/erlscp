@@ -22,7 +22,7 @@
 -include_lib("stdlib/include/erl_compile.hrl").
 -include_lib("kernel/include/file.hrl").
 
--export([compile_cmdline/1]).
+-export([compile_cmdline/1, compile/1]).
 
 -export_type([cmd_line_arg/0]).
 
